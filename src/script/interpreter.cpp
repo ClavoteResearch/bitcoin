@@ -22,6 +22,7 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
+#include "../../fork/src/script/verify_stub.h"  // experimental ML-DSA-87 path
 
 typedef std::vector<unsigned char> valtype;
 
@@ -1689,7 +1690,13 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
 template <class T>
 bool GenericTransactionSignatureChecker<T>::VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& pubkey, const uint256& sighash) const
 {
-    return pubkey.Verify(sighash, vchSig);
+    // Experimental PQC fork: route all signatures through ML-DSA-87 path
+    Consensus::Params dummy{};
+    return Script::VerifySignature(
+        std::span<const uint8_t>(sighash.begin(), sighash.size()),
+        std::span<const uint8_t>(vchSig.data(), vchSig.size()),
+        std::span<const uint8_t>(pubkey.begin(), pubkey.size()),
+        dummy);
 }
 
 template <class T>
