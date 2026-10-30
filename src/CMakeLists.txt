@@ -71,6 +71,8 @@ find_path(OQS_INCLUDE_DIR NAMES oqs/oqs.h REQUIRED)
 find_library(OQS_LIBRARY NAMES oqs REQUIRED)
 message(STATUS "Qcoin: liboqs include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
 option(QCOIN_ECDSA_FALLBACK "Fall back to secp256k1 ECDSA verification for non-ML-DSA-sized signatures" ON)
+option(QCOIN_WITNESS_V2_EXPERIMENTAL "Enable the experimental segwit v2 ML-DSA attestation path in consensus (Option B)" OFF)
+message(STATUS "Qcoin: QCOIN_WITNESS_V2_EXPERIMENTAL=${QCOIN_WITNESS_V2_EXPERIMENTAL}")
 message(STATUS "Qcoin: QCOIN_ECDSA_FALLBACK=${QCOIN_ECDSA_FALLBACK}")
 
 # Qcoin: wallet-side PQC scheme switch and liboqs ML-DSA keygen/sign stubs
@@ -103,6 +105,12 @@ target_include_directories(bitcoin_consensus PUBLIC ${OQS_INCLUDE_DIR})
 target_link_libraries(bitcoin_consensus PUBLIC ${OQS_LIBRARY})
 if(QCOIN_ECDSA_FALLBACK)
   target_compile_definitions(bitcoin_consensus PUBLIC QCOIN_ECDSA_FALLBACK)
+endif()
+if(QCOIN_WITNESS_V2_EXPERIMENTAL)
+  target_compile_definitions(bitcoin_consensus PUBLIC QCOIN_WITNESS_V2_EXPERIMENTAL)
+  # Self-test: build, sign and verify a key-path witness v2 spend end to end.
+  add_executable(qcoin-v2-selftest ${PROJECT_SOURCE_DIR}/fork/test/v2_selftest.cpp)
+  target_link_libraries(qcoin-v2-selftest PRIVATE core_interface bitcoin_consensus bitcoin_crypto secp256k1 qcoin_pqc)
 endif()
 
 if(WITH_ZMQ)

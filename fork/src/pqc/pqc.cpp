@@ -169,6 +169,39 @@ bool MlDsaVerify(SigScheme scheme, std::span<const uint8_t> pk, std::span<const 
     return OQS_SIG_verify(sig.get(), msg.data(), msg.size(), sig_in.data(), sig_in.size(), pk.data()) == OQS_SUCCESS;
 }
 
+uint8_t ParamIdFor(SigScheme scheme)
+{
+    switch (scheme) {
+    case SigScheme::MLDSA44: return 0x01;
+    case SigScheme::MLDSA87: return 0x7f; // experimental; not defined by the BIP
+    case SigScheme::ECDSA: break;
+    }
+    return 0;
+}
+
+bool MlDsaSignCtx(SigScheme scheme, std::span<const uint8_t> sk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::vector<uint8_t>& sig_out)
+{
+    OqsSigPtr sig = NewSig(scheme);
+    if (!sig || !sig->sig_with_ctx_support) return false;
+    if (sk.size() != sig->length_secret_key) return false;
+    sig_out.assign(sig->length_signature, 0);
+    size_t sig_len = 0;
+    if (OQS_SIG_sign_with_ctx_str(sig.get(), sig_out.data(), &sig_len, msg.data(), msg.size(), ctx.data(), ctx.size(), sk.data()) != OQS_SUCCESS) {
+        sig_out.clear();
+        return false;
+    }
+    sig_out.resize(sig_len);
+    return true;
+}
+
+bool MlDsaVerifyCtx(SigScheme scheme, std::span<const uint8_t> pk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::span<const uint8_t> sig_in)
+{
+    OqsSigPtr sig = NewSig(scheme);
+    if (!sig || !sig->sig_with_ctx_support) return false;
+    if (pk.size() != sig->length_public_key || sig_in.size() != sig->length_signature) return false;
+    return OQS_SIG_verify_with_ctx_str(sig.get(), msg.data(), msg.size(), sig_in.data(), sig_in.size(), ctx.data(), ctx.size(), pk.data()) == OQS_SUCCESS;
+}
+
 // ---------------------------------------------------------------------------
 // MlDsaKeyStore
 // ---------------------------------------------------------------------------

@@ -285,6 +285,16 @@ public:
         return false;
     }
 
+    /**
+     * Qcoin / Option B: verify an ML-DSA signature from a witness v2 attestation
+     * entry over the BIP section 6 message param_id || SHA256(pubkey) || sighash,
+     * where sighash is the BIP 341 hash for `sigversion` (TAPROOT on the key path).
+     */
+    virtual bool CheckMlDsaSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, uint8_t param_id, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const
+    {
+        return false;
+    }
+
     virtual bool CheckLockTime(const CScriptNum& nLockTime) const
     {
          return false;
@@ -330,6 +340,7 @@ public:
     GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
     bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
+    bool CheckMlDsaSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, uint8_t param_id, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
 };

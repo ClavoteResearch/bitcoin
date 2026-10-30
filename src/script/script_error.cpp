@@ -119,6 +119,10 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Signature is found in scriptCode";
         case SCRIPT_ERR_SCRIPTNUM:
             return "Script number overflowed or is non-minimally encoded";
+        case SCRIPT_ERR_MLDSA_ATTESTATION:
+            return "Malformed ML-DSA attestation";
+        case SCRIPT_ERR_MLDSA_SIG:
+            return "Invalid ML-DSA signature";
         case SCRIPT_ERR_UNKNOWN_ERROR:
         case SCRIPT_ERR_ERROR_COUNT:
             break;

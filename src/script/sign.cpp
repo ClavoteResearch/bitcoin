@@ -13,6 +13,7 @@
 #include <musig.h>
 #include <policy/policy.h>
 #include <pqc/pqc.h> // Qcoin: wallet PQC scheme switch + ML-DSA stubs
+#include <crypto/sha256.h>
 #include <util/log.h>
 #include <prevector.h>
 #include <primitives/transaction.h>
@@ -92,13 +93,26 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
             LogInfo("Qcoin: no %s key in store for %s; cannot sign", qcoin::pqc::SigSchemeName(scheme), address.ToString());
             return false;
         }
+        // BIP section 6: sign m = param_id || SHA256(pk) || sighash under ctx "BIP-MLDSAv2".
+        // `hash` here is still the legacy/segwit-v0 sighash of this P2PKH/P2WPKH input;
+        // a v2 output would use the BIP 341 hash (see CheckMlDsaSignature). The
+        // message framing and context are the BIP's, so only the sighash differs.
+        const uint8_t param_id = qcoin::pqc::ParamIdFor(scheme);
+        uint256 pk_hash;
+        CSHA256().Write(kp->pk.data(), kp->pk.size()).Finalize(pk_hash.begin());
+        std::vector<uint8_t> msg;
+        msg.reserve(65);
+        msg.push_back(param_id);
+        msg.insert(msg.end(), pk_hash.begin(), pk_hash.end());
+        msg.insert(msg.end(), hash.begin(), hash.end());
+        const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::pqc::SIGNATURE_CONTEXT), qcoin::pqc::SIGNATURE_CONTEXT_LEN);
         std::vector<uint8_t> mldsa_sig;
-        if (!qcoin::pqc::MlDsaSign(scheme, kp->sk, std::span<const uint8_t>(hash.begin(), hash.size()), mldsa_sig)) {
+        if (!qcoin::pqc::MlDsaSignCtx(scheme, kp->sk, msg, ctx, mldsa_sig)) {
             LogInfo("Qcoin: %s sign failed for %s", qcoin::pqc::SigSchemeName(scheme), address.ToString());
             return false;
         }
-        LogInfo("Qcoin: %s sign attempt for %s produced %u-byte signature (pk=%u bytes); spend will not verify until outputs commit to ML-DSA keys",
-                qcoin::pqc::SigSchemeName(scheme), address.ToString(), unsigned(mldsa_sig.size()), unsigned(kp->pk.size()));
+        LogInfo("Qcoin: %s signed BIP-MLDSAv2 message (param_id=0x%02x, pk_hash=%s) over legacy sighash for %s: %u-byte signature; spend will not verify until the output is witness v2",
+                qcoin::pqc::SigSchemeName(scheme), param_id, pk_hash.ToString().substr(0, 16), address.ToString(), unsigned(mldsa_sig.size()));
         vchSig = std::move(mldsa_sig);
         vchSig.push_back((unsigned char)hashtype);
         return true;

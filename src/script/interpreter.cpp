@@ -1760,6 +1760,25 @@ bool GenericTransactionSignatureChecker<T>::CheckSchnorrSignature(std::span<cons
 }
 
 template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckMlDsaSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, uint8_t param_id, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const
+{
+    // Qcoin / Option B, BIP section 6. Key path only for now (sigversion TAPROOT);
+    // the script path (TAPSCRIPT-like leaf semantics) is not implemented.
+    assert(sigversion == SigVersion::TAPROOT);
+    const auto sizes = qcoin::v2::SizesFor(param_id);
+    if (!sizes || pubkey.size() != sizes->pk || sig.size() != sizes->sig) return set_error(serror, SCRIPT_ERR_MLDSA_ATTESTATION);
+    uint256 sighash;
+    if (!this->txdata) return HandleMissingData(m_mdb);
+    // v2 has no hashtype byte: always SIGHASH_DEFAULT over the BIP 341 hash.
+    if (!SignatureHashSchnorr(sighash, execdata, *txTo, nIn, SIGHASH_DEFAULT, sigversion, *this->txdata, m_mdb)) {
+        return set_error(serror, SCRIPT_ERR_MLDSA_SIG);
+    }
+    const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(param_id, qcoin::v2::PubKeyHash(pubkey), sighash);
+    if (!qcoin::v2::VerifyMlDsa(param_id, pubkey, msg, sig)) return set_error(serror, SCRIPT_ERR_MLDSA_SIG);
+    return true;
+}
+
+template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckLockTime(const CScriptNum& nLockTime) const
 {
     // There are two kinds of nLockTime: lock-by-blockheight
@@ -1950,20 +1969,27 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         if (stack.empty()) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
         const valtype& last = stack.back();
         if (!qcoin::v2::LooksLikeAttestation(std::span<const uint8_t>(last.data(), last.size()))) {
-            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+            return set_error(serror, SCRIPT_ERR_MLDSA_ATTESTATION);
         }
         const auto att = qcoin::v2::ParseAttestation(std::span<const uint8_t>(last.data(), last.size()));
-        if (!att) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        if (!att) return set_error(serror, SCRIPT_ERR_MLDSA_ATTESTATION);
         stack = stack.first(stack.size() - 1);
+        // v2 defines no annex (BIP 110 rule 4 analysis); the attestation prefix 0x51 is distinct from 0x50.
+        execdata.m_annex_init = true;
+        execdata.m_annex_present = false;
         if (stack.empty() && att->entries.size() == 1) {
-            // Key path: commitment check is real; ML-DSA verification over the
-            // section 6 message is not implemented, so fail closed.
-            if (!qcoin::v2::CheckCommitment(std::span<const uint8_t>(program.data(), program.size()), att->entries[0], {})) {
+            // Key path (section 4): commitment must match, then ML-DSA.Verify over the
+            // section 6 message with ctx BIP-MLDSAv2 using the attested public key.
+            const auto& entry = att->entries[0];
+            if (!qcoin::v2::CheckCommitment(std::span<const uint8_t>(program.data(), program.size()), entry, {})) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
             }
-            return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR); // TODO(qcoin): ML-DSA.Verify with ctx BIP-MLDSAv2
+            if (!checker.CheckMlDsaSignature(entry.signature, entry.pubkey, entry.param_id, SigVersion::TAPROOT, execdata, serror)) {
+                return false; // serror is set
+            }
+            return set_success(serror);
         }
-        return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR); // TODO(qcoin): script path + OP_CHECKMLDSAVERIFY
+        return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR); // TODO(qcoin): script path + OP_CHECKMLDSAVERIFY (section 5)
     }
 #endif
 

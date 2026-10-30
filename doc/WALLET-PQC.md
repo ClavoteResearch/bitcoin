@@ -15,7 +15,7 @@ in the clavote-boop/BIP repository (`docs/spec/bip-mldsa-formal.md`).
 | ML-DSA keygen / sign / verify | `fork/src/pqc/pqc.cpp` | Thin liboqs wrappers for ML-DSA-44 and ML-DSA-87. Functional. |
 | ML-DSA key store (dev only) | `qcoin::pqc::MlDsaKeyStore` | Process-wide, in memory, mutex-guarded. Keys indexed by the 20-byte ID of the HD seed key they were generated with; one key is the wallet "default". Saved **unencrypted** to `mldsa_keys.dat` next to the wallet database and reloaded in `CWallet::LoadExisting`. |
 | Keygen call site | `wallet/wallet.cpp`, `CWallet::SetupOwnDescriptorScriptPubKeyMans` | With a non-ECDSA scheme, a keypair is generated, added to the store as default, and saved to disk. |
-| Witness v2 definitions (Option B) | `fork/src/script/witness_v2.h` | Constants, attestation parser, and commitment computation per BIP sections 1-3. Wired into the interpreter only under `QCOIN_WITNESS_V2_EXPERIMENTAL`; `Qcoin / Option B` marker comments in solver, key_io, descriptor, outputtype and addresstype show where the rest attaches. |
+| Witness v2 definitions (Option B) | `fork/src/script/witness_v2.h` | Constants, attestation parser/builder, commitment computation, section 6 message builder and ML-DSA verify with context, per BIP sections 1-3 and 6. Wired into the interpreter only under `QCOIN_WITNESS_V2_EXPERIMENTAL`; `Qcoin / Option B` marker comments in solver, key_io, descriptor, outputtype and addresstype show where the rest attaches. |
 | Signing call site | `script/sign.cpp`, `MutableTransactionSignatureCreator::CreateSig` | With a non-ECDSA scheme, the store is queried by key ID, then by default. If a key is found a real ML-DSA signature is produced and logged. The spend still fails at `VerifyScript` because the UTXO commits to a secp256k1 pubkey. |
 
 The ECDSA path is untouched when `-walletsigscheme=ecdsa` (the default), so all
@@ -85,6 +85,36 @@ both parameter sets, `MlDsaKeyStore` becomes the interim backing for a
 attestation verifier calls. If A is kept instead, document it as a hard-fork
 testnet experiment and delete the BIP compliance section from the draft.
 
+## Sighash and signature message (BIP section 6)
+
+What changed in this step:
+
+- **Consensus (experimental).** `GenericTransactionSignatureChecker::CheckMlDsaSignature`
+  computes the BIP 341 sighash with `SigVersion::TAPROOT` and `SIGHASH_DEFAULT`
+  (v2 carries no hashtype byte), builds `m = param_id || SHA256(pk) || sighash`
+  (65 bytes), and verifies the attestation's signature with liboqs
+  `OQS_SIG_verify_with_ctx_str` under ctx `BIP-MLDSAv2`. The key path in
+  `VerifyWitnessProgram` now calls it after the commitment check and returns
+  success on a valid signature. New script errors: `SCRIPT_ERR_MLDSA_ATTESTATION`
+  and `SCRIPT_ERR_MLDSA_SIG`. All of this compiles only with the CMake option
+  `QCOIN_WITNESS_V2_EXPERIMENTAL=ON`.
+- **Wallet.** With a non-ECDSA scheme the signer no longer signs the raw sighash.
+  It signs the same 65-byte section 6 message under the same context. Because
+  today's wallet still spends P2WPKH inputs, the sighash it feeds in is the
+  legacy/segwit-v0 one, not the BIP 341 hash; the message framing and context
+  are already the BIP's, so when a v2 output type exists only the sighash
+  source changes.
+- **Self-test.** `qcoin-v2-selftest` (built with the option ON) generates an
+  ML-DSA-44 key, builds `OP_2 <Q>`, signs the section 6 message for a spending
+  transaction, assembles the one-entry attestation witness, and runs
+  `VerifyScript`. It asserts success, then asserts the right error for a
+  corrupted signature, a wrong commitment, and a malformed attestation.
+
+Still open from section 6: canonical signature-encoding enforcement (liboqs
+accepts non-canonical hints), the BIP 342-style extension of the sighash for
+the script path, and the deployment flag so the branch is not active
+unconditionally once enabled.
+
 ## Option B checklist: what a spendable ML-DSA output needs
 
 Each item names the file that owns it and the marker comment (search for
@@ -99,24 +129,25 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
 - [x] `ParseAttestation`: fixed-layout parser with the no-slack-bytes rule.
 - [x] `PubKeyHash`, `ComputeCommitment`, `CheckCommitment`.
 - [ ] Canonical FIPS 204 signature-encoding check (hint count <= omega).
-- [ ] Section 6 message builder: `param_id || pk_hash || sighash_v2`.
+- [x] Section 6 message builder: `param_id || pk_hash || sighash_v2`.
 
 ### 2. New witness version in consensus: `script/interpreter.cpp`
 - [x] Guarded v2 branch in `VerifyWitnessProgram` ahead of the v0/v1 chain
       that pops the attestation and checks the commitment (key path).
 - [ ] `SCRIPT_VERIFY_MLDSA_V2` flag plus deployment in `consensus/params.h`
       and `deploymentinfo.cpp`; branch runs only when the flag is set.
-- [ ] Key path: ML-DSA.Verify over the section 6 message (liboqs via
-      `verify_stub.h`, which then becomes a plain helper).
+- [x] Key path: ML-DSA.Verify over the section 6 message (`CheckMlDsaSignature`;
+      liboqs with ctx `BIP-MLDSAv2`).
 - [ ] Script path: control block <= 257 bytes, leaf hash and merkle proof as
       BIP 341, OP_SUCCESSx forbidden in leaves, `SigVersion::MLDSA_V2`.
 - [ ] `OP_CHECKMLDSAVERIFY` at 0xb3 under v2 leaf semantics: pops `<i:1>` and
       `<pk_hash:32>`, requires an attestation, i < n, SHA256(pk_i) == pk_hash,
       ML-DSA.Verify(entry i).
-- [ ] Dedicated `ScriptError` codes instead of the `SCRIPT_ERR_UNKNOWN_ERROR`
-      placeholders now in the stub.
-- [ ] v2 sighash: `SignatureHashSchnorr` variant that extends BIP 341/342 and
-      commits to `param_id` and `pk_hash`.
+- [x] Dedicated `ScriptError` codes (`SCRIPT_ERR_MLDSA_ATTESTATION`, `SCRIPT_ERR_MLDSA_SIG`);
+      the script path still returns `SCRIPT_ERR_UNKNOWN_ERROR`.
+- [~] v2 sighash: key path uses `SignatureHashSchnorr(TAPROOT, SIGHASH_DEFAULT)`;
+      `param_id`/`pk_hash` are committed in the message, not the hash. Script-path
+      extension pending.
 - [ ] Revert commit 13d6b525 (ECDSA-path routing) and drop
       `QCOIN_ECDSA_FALLBACK` once the v2 path verifies end to end.
 

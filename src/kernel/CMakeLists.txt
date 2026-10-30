@@ -102,6 +102,9 @@ target_link_libraries(bitcoinkernel PUBLIC ${OQS_LIBRARY})
 if(QCOIN_ECDSA_FALLBACK)
   target_compile_definitions(bitcoinkernel PUBLIC QCOIN_ECDSA_FALLBACK)
 endif()
+if(QCOIN_WITNESS_V2_EXPERIMENTAL)
+  target_compile_definitions(bitcoinkernel PUBLIC QCOIN_WITNESS_V2_EXPERIMENTAL)
+endif()
 target_link_libraries(bitcoinkernel
   PRIVATE
     core_interface

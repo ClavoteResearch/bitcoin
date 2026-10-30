@@ -69,6 +69,20 @@ bool MlDsaSign(SigScheme scheme, std::span<const uint8_t> sk, std::span<const ui
 /** Verify an ML-DSA signature. Mirrors the consensus stub; useful for wallet self-checks. */
 bool MlDsaVerify(SigScheme scheme, std::span<const uint8_t> pk, std::span<const uint8_t> msg, std::span<const uint8_t> sig);
 
+/**
+ * BIP section 6 context string. Duplicated from fork/src/script/witness_v2.h
+ * (which this Core-free library cannot include); keep the two in sync.
+ */
+inline constexpr char SIGNATURE_CONTEXT[] = "BIP-MLDSAv2";
+inline constexpr size_t SIGNATURE_CONTEXT_LEN = sizeof(SIGNATURE_CONTEXT) - 1;
+
+/** BIP param_id for a scheme: 0x01 for ML-DSA-44, 0x7f (experimental, not in the BIP) for ML-DSA-87, 0 for ECDSA. */
+uint8_t ParamIdFor(SigScheme scheme);
+
+/** Sign/verify with a FIPS 204 context string (pure mode). Empty ctx == MlDsaSign/MlDsaVerify. */
+bool MlDsaSignCtx(SigScheme scheme, std::span<const uint8_t> sk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::vector<uint8_t>& sig);
+bool MlDsaVerifyCtx(SigScheme scheme, std::span<const uint8_t> pk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::span<const uint8_t> sig);
+
 /** 20-byte identifier (a CKeyID / uint160 in Core terms) used to index stored keys. */
 using KeyId = std::array<uint8_t, 20>;
 
