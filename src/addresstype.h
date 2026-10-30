@@ -90,6 +90,10 @@ struct WitnessV1Taproot : public XOnlyPubKey
     explicit WitnessV1Taproot(const XOnlyPubKey& xpk) : XOnlyPubKey(xpk) {}
 };
 
+//! Qcoin / Option B marker: a `struct WitnessV2MlDsa : public uint256` destination
+//! (the 32-byte commitment Q from fork/src/script/witness_v2.h) belongs here and
+//! in the CTxDestination variant, with GetScriptForDestination emitting OP_2 <Q>.
+//! Until it exists, v2 programs decode as WitnessUnknown.
 //! CTxDestination subtype to encode any future Witness version
 struct WitnessUnknown
 {

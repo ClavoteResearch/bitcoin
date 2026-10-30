@@ -169,6 +169,11 @@ TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned c
         if (scriptPubKey.IsPayToAnchor()) {
             return TxoutType::ANCHOR;
         }
+        // Qcoin / Option B marker: `witnessversion == 2 && witnessprogram.size() == 32`
+        // is an ML-DSA attestation output. A new TxoutType (e.g. WITNESS_V2_MLDSA)
+        // returned here is what lets the wallet recognise its own PQ outputs as
+        // spendable and lets policy apply the ML-DSA dust rule. Until then it is
+        // classified as WITNESS_UNKNOWN below. See fork/src/script/witness_v2.h.
         if (witnessversion != 0) {
             vSolutionsRet.push_back(std::vector<unsigned char>{(unsigned char)witnessversion});
             vSolutionsRet.push_back(std::move(witnessprogram));

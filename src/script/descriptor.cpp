@@ -2808,6 +2808,16 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "A function is needed within P2WSH";
         return {};
     }
+    // Qcoin / Option B marker: `wpq(KEY)` (key path) and `wpq(KEY,{TREE})`
+    // (script path) are the intended descriptor fragments for a witness v2
+    // ML-DSA output. KEY must become an ML-DSA PubkeyProvider (1312-byte
+    // ML-DSA-44 key, hex or a new HD-seed form) and the DescriptorImpl's
+    // MakeScripts() would emit OP_2 <qcoin::v2::ComputeCommitment(...)>.
+    // Reserved here so the name cannot silently mean something else later.
+    if (ctx == ParseScriptContext::TOP && (Func("wpq", expr) || Func("mldsa", expr))) {
+        error = "wpq()/mldsa(): ML-DSA witness v2 descriptors are not implemented yet (see doc/WALLET-PQC.md)";
+        return {};
+    }
     error = strprintf("'%s' is not a valid descriptor function", std::string(expr.begin(), expr.end()));
     return {};
 }

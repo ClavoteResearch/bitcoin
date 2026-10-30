@@ -15,6 +15,7 @@ in the clavote-boop/BIP repository (`docs/spec/bip-mldsa-formal.md`).
 | ML-DSA keygen / sign / verify | `fork/src/pqc/pqc.cpp` | Thin liboqs wrappers for ML-DSA-44 and ML-DSA-87. Functional. |
 | ML-DSA key store (dev only) | `qcoin::pqc::MlDsaKeyStore` | Process-wide, in memory, mutex-guarded. Keys indexed by the 20-byte ID of the HD seed key they were generated with; one key is the wallet "default". Saved **unencrypted** to `mldsa_keys.dat` next to the wallet database and reloaded in `CWallet::LoadExisting`. |
 | Keygen call site | `wallet/wallet.cpp`, `CWallet::SetupOwnDescriptorScriptPubKeyMans` | With a non-ECDSA scheme, a keypair is generated, added to the store as default, and saved to disk. |
+| Witness v2 definitions (Option B) | `fork/src/script/witness_v2.h` | Constants, attestation parser, and commitment computation per BIP sections 1-3. Wired into the interpreter only under `QCOIN_WITNESS_V2_EXPERIMENTAL`; `Qcoin / Option B` marker comments in solver, key_io, descriptor, outputtype and addresstype show where the rest attaches. |
 | Signing call site | `script/sign.cpp`, `MutableTransactionSignatureCreator::CreateSig` | With a non-ECDSA scheme, the store is queried by key ID, then by default. If a key is found a real ML-DSA signature is produced and logged. The spend still fails at `VerifyScript` because the UTXO commits to a secp256k1 pubkey. |
 
 The ECDSA path is untouched when `-walletsigscheme=ecdsa` (the default), so all
@@ -83,6 +84,88 @@ both parameter sets, `MlDsaKeyStore` becomes the interim backing for a
 `mldsa()` descriptor key, and `verify_stub.h` collapses to a helper that the
 attestation verifier calls. If A is kept instead, document it as a hard-fork
 testnet experiment and delete the BIP compliance section from the draft.
+
+## Option B checklist: what a spendable ML-DSA output needs
+
+Each item names the file that owns it and the marker comment (search for
+`Qcoin / Option B`) or stub already placed there. Items are ordered so each
+one can be built and tested on top of the previous ones. Everything below is
+gated behind `QCOIN_WITNESS_V2_EXPERIMENTAL` until it is complete; without the
+define, v2 stays an unknown upgradable witness version exactly as upstream.
+
+### 1. Shared definitions: `fork/src/script/witness_v2.h` (exists)
+- [x] Constants: version 2, 32-byte program, tag `MLDSAv2/Commit`, prefix 0x51,
+      `param_id` 0x01 = ML-DSA-44 (1312/2420), 0x02 reserved, ctx `BIP-MLDSAv2`.
+- [x] `ParseAttestation`: fixed-layout parser with the no-slack-bytes rule.
+- [x] `PubKeyHash`, `ComputeCommitment`, `CheckCommitment`.
+- [ ] Canonical FIPS 204 signature-encoding check (hint count <= omega).
+- [ ] Section 6 message builder: `param_id || pk_hash || sighash_v2`.
+
+### 2. New witness version in consensus: `script/interpreter.cpp`
+- [x] Guarded v2 branch in `VerifyWitnessProgram` ahead of the v0/v1 chain
+      that pops the attestation and checks the commitment (key path).
+- [ ] `SCRIPT_VERIFY_MLDSA_V2` flag plus deployment in `consensus/params.h`
+      and `deploymentinfo.cpp`; branch runs only when the flag is set.
+- [ ] Key path: ML-DSA.Verify over the section 6 message (liboqs via
+      `verify_stub.h`, which then becomes a plain helper).
+- [ ] Script path: control block <= 257 bytes, leaf hash and merkle proof as
+      BIP 341, OP_SUCCESSx forbidden in leaves, `SigVersion::MLDSA_V2`.
+- [ ] `OP_CHECKMLDSAVERIFY` at 0xb3 under v2 leaf semantics: pops `<i:1>` and
+      `<pk_hash:32>`, requires an attestation, i < n, SHA256(pk_i) == pk_hash,
+      ML-DSA.Verify(entry i).
+- [ ] Dedicated `ScriptError` codes instead of the `SCRIPT_ERR_UNKNOWN_ERROR`
+      placeholders now in the stub.
+- [ ] v2 sighash: `SignatureHashSchnorr` variant that extends BIP 341/342 and
+      commits to `param_id` and `pk_hash`.
+- [ ] Revert commit 13d6b525 (ECDSA-path routing) and drop
+      `QCOIN_ECDSA_FALLBACK` once the v2 path verifies end to end.
+
+### 3. Output commitment and classification: `script/solver.cpp`, `script/script.h`
+- [ ] `TxoutType::WITNESS_V2_MLDSA` returned for v2 + 32 bytes (marker in
+      `Solver`); `vSolutionsRet` carries Q.
+- [ ] `CScript::IsWitnessV2MlDsa()` helper alongside `IsPayToAnchor()`.
+- [ ] `GetScriptForDestination` emits `OP_2 <Q>` for the new destination.
+- [ ] Policy: `IsStandard` accepts the type; dust threshold uses the ML-DSA
+      spend size (about 940 vbytes per key-path input).
+
+### 4. Address type: `addresstype.h`, `key_io.cpp`, `outputtype.h`
+- [ ] `struct WitnessV2MlDsa : uint256` added to the `CTxDestination` variant
+      (marker in `addresstype.h`).
+- [ ] `DecodeDestination`: `version == 2 && size == 32` returns it (marker in
+      `key_io.cpp`); `EncodeDestination` emits bech32m at version 2
+      (`bc1z...`, `bcrt1z...`).
+- [ ] `OutputType::BECH32M_V2` (marker in `outputtype.h`), parse/format string,
+      `OutputTypeFromDestination`, `-addresstype`/`-changetype` acceptance.
+- [ ] Test vectors: address encoding, commitment construction for key path
+      and script path (the BIP's Test Vectors section is still empty).
+
+### 5. Descriptor change: `script/descriptor.cpp`, `script/signingprovider.h`
+- [ ] ML-DSA `PubkeyProvider`: parses a 1312-byte hex key or an HD-seed form,
+      exposes `pk_hash`, and resolves the secret key for signing.
+- [ ] `wpq(KEY)` and `wpq(KEY,{TREE})` `DescriptorImpl` whose `MakeScripts`
+      emits `OP_2 <ComputeCommitment(0x01, pk_hash, merkle_root)>` (names are
+      reserved with a not-implemented error today).
+- [ ] `SigningProvider::GetMlDsaKey(pk_hash, sk)`; replace the
+      `MlDsaKeyStore` default-key fallback in `script/sign.cpp` with it.
+- [ ] Wallet DB record type for ML-DSA secrets, encrypted via `crypter.cpp`,
+      replacing `mldsa_keys.dat`.
+
+### 6. Parser and signer: `script/sign.cpp`, `script/interpreter.cpp`
+- [ ] `ProduceSignature`: for a `WITNESS_V2_MLDSA` output build the section 6
+      message, sign with ML-DSA-44 under ctx `BIP-MLDSAv2`, and emit the
+      witness as `[attestation]` (key path) or
+      `[inputs..., leaf, control, attestation]` (script path).
+- [ ] `SignatureExtractorChecker` / `DataFromTransaction` understand the
+      attestation so partially signed inputs round-trip through PSBT.
+- [ ] PSBT fields for ML-DSA pubkeys and partial signatures.
+- [ ] Functional test: create `wpq()` wallet on regtest, fund it, spend
+      key-path and script-path, assert both confirm; negative tests for every
+      structural rule in section 3.
+
+### Exit criteria
+A regtest wallet with `-walletsigscheme=mldsa44 -addresstype=bech32m-v2`
+receives to a `bcrt1z` address and spends it in a block that the node accepts
+with `QCOIN_ECDSA_FALLBACK=OFF` and commit 13d6b525 reverted.
 
 ## Remaining gaps (both options unless noted)
 

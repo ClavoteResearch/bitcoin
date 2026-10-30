@@ -187,6 +187,13 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
                 return PayToAnchor();
             }
 
+            // Qcoin / Option B marker: `version == 2 && data.size() == 32` is a
+            // bech32m ML-DSA attestation address (bc1z... / bcrt1z...). It needs a
+            // dedicated CTxDestination (e.g. WitnessV2MlDsa) so EncodeDestination,
+            // GetScriptForDestination and the wallet's OutputType mapping can
+            // round-trip it. The 32 bytes are the opaque commitment Q; no
+            // structural check is possible here. Falls into WitnessUnknown below.
+
             if (version > 16) {
                 error_str = "Invalid Bech32 address witness version";
                 return CNoDestination();

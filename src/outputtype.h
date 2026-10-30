@@ -20,6 +20,9 @@ enum class OutputType {
     P2SH_SEGWIT,
     BECH32,
     BECH32M,
+    // Qcoin / Option B marker: add BECH32M_V2 (or MLDSA) here, in OUTPUT_TYPES,
+    // ParseOutputType/FormatOutputType ("bech32m-v2"), OutputTypeFromDestination,
+    // and the wallet's descriptor setup so -addresstype can request it.
     UNKNOWN,
 };
 

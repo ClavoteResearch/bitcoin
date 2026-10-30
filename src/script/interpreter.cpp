@@ -23,6 +23,7 @@
 #include <limits>
 #include <stdexcept>
 #include "../../fork/src/script/verify_stub.h"  // experimental ML-DSA-87 path
+#include "../../fork/src/script/witness_v2.h"  // Qcoin Option B: segwit v2 ML-DSA attestation (stub)
 
 typedef std::vector<unsigned char> valtype;
 
@@ -1936,6 +1937,35 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
     CScript exec_script; //!< Actually executed script (last stack item in P2WSH; implied P2PKH script in P2WPKH; leaf script in P2TR)
     std::span stack{witness.stack};
     ScriptExecutionData execdata;
+
+    // Qcoin / Option B marker: a 32-byte non-P2SH witness v2 program is an
+    // ML-DSA attestation output. This is where the final witness element
+    // would be popped as the attestation (qcoin::v2::ParseAttestation), the
+    // output commitment checked (qcoin::v2::CheckCommitment), and the key-
+    // or script-path verified (sections 4-6 of the BIP). Until that lands,
+    // v2 falls through to the unknown-version branch below and stays
+    // anyone-can-spend-but-discouraged, exactly as upstream.
+#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
+    if (witversion == qcoin::v2::WITNESS_V2_VERSION && program.size() == qcoin::v2::WITNESS_V2_PROGRAM_SIZE && !is_p2sh) {
+        if (stack.empty()) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
+        const valtype& last = stack.back();
+        if (!qcoin::v2::LooksLikeAttestation(std::span<const uint8_t>(last.data(), last.size()))) {
+            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        }
+        const auto att = qcoin::v2::ParseAttestation(std::span<const uint8_t>(last.data(), last.size()));
+        if (!att) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        stack = stack.first(stack.size() - 1);
+        if (stack.empty() && att->entries.size() == 1) {
+            // Key path: commitment check is real; ML-DSA verification over the
+            // section 6 message is not implemented, so fail closed.
+            if (!qcoin::v2::CheckCommitment(std::span<const uint8_t>(program.data(), program.size()), att->entries[0], {})) {
+                return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+            }
+            return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR); // TODO(qcoin): ML-DSA.Verify with ctx BIP-MLDSAv2
+        }
+        return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR); // TODO(qcoin): script path + OP_CHECKMLDSAVERIFY
+    }
+#endif
 
     if (witversion == 0) {
         if (program.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
