@@ -28,7 +28,8 @@ void Check(bool ok, const char* what)
     if (!ok) ++g_failures;
 }
 
-std::span<const uint8_t> Span(const std::vector<unsigned char>& v) { return {v.data(), v.size()}; }
+template <class V>
+std::span<const uint8_t> Span(const V& v) { return {v.data(), v.size()}; }
 
 struct Fixture {
     qcoin::pqc::MlDsaKeyPair kp;

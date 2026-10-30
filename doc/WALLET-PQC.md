@@ -45,8 +45,12 @@ Nothing short of outputs that commit to an ML-DSA public key can make this pass.
   behaviour for descriptor wallets), so the creation hook adds one more ML-DSA
   key and `wpq()` address at that point, written encrypted. Spending while locked
   cannot sign: `send` returns an unsigned PSBT and `sendtoaddress` errors.
-- Decrypted secrets are copied into an ordinary `std::vector` for liboqs and are
-  not held in a secure allocator or wiped after use.
+- Secrets are held in `qcoin::pqc::SecureBytes`, a `std::vector` on Core's
+  `secure_allocator` (locked pool, `memory_cleanse` on free), the same type as
+  `CKeyingMaterial`. Decrypted keys move straight from the crypter into it, the
+  database loader deserialises into it, and the signer calls `WipeSecret` as soon
+  as liboqs has produced the signature. What liboqs does with its own internal
+  copies during signing is up to liboqs (it cleanses them).
 - There is no HD derivation: every `getnewmldsaaddress` call stores an
   independent keypair (about 3.9 KB for ML-DSA-44).
 - No RPC exposes the keys; `listdescriptors true` cannot print a private form
@@ -283,7 +287,7 @@ with `QCOIN_ECDSA_FALLBACK=OFF` and commit 13d6b525 reverted.
 ### Key material and storage
 - [~] ML-DSA keys are wallet-DB records (`walletdescriptormldsakey` /
   `walletdescriptormldsackey`, per descriptor), encrypted with the wallet
-  passphrase. A secure-allocator key type is pending.
+  passphrase, held in memory in a secure-allocator type and wiped after signing.
 - `SigningProvider` has no `GetMlDsaKey(...)`; the signer bypasses it.
 - No HD derivation. FIPS 204 keygen takes a 32-byte seed, so a BIP32-style
   path to a seed is plausible, but it needs a spec.

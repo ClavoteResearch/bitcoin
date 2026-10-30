@@ -79,8 +79,9 @@ message(STATUS "Qcoin: QCOIN_ECDSA_FALLBACK=${QCOIN_ECDSA_FALLBACK}")
 add_library(qcoin_pqc STATIC EXCLUDE_FROM_ALL
   ${PROJECT_SOURCE_DIR}/fork/src/pqc/pqc.cpp
 )
-target_include_directories(qcoin_pqc PUBLIC ${PROJECT_SOURCE_DIR}/fork/src ${OQS_INCLUDE_DIR})
-target_link_libraries(qcoin_pqc PRIVATE core_interface PUBLIC ${OQS_LIBRARY})
+target_include_directories(qcoin_pqc PUBLIC ${PROJECT_SOURCE_DIR}/fork/src ${PROJECT_SOURCE_DIR}/src ${OQS_INCLUDE_DIR})
+# bitcoin_crypto provides support/lockedpool.cpp and support/cleanse.cpp for secure_allocator
+target_link_libraries(qcoin_pqc PRIVATE core_interface PUBLIC ${OQS_LIBRARY} bitcoin_crypto)
 
 add_library(bitcoin_consensus STATIC EXCLUDE_FROM_ALL
   arith_uint256.cpp

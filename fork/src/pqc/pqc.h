@@ -8,6 +8,8 @@
 #ifndef QCOIN_FORK_PQC_PQC_H
 #define QCOIN_FORK_PQC_PQC_H
 
+#include <support/allocators/secure.h> // Core's mlock'd, zero-on-free allocator
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -44,17 +46,27 @@ size_t MlDsaPubKeyLen(SigScheme scheme);
 size_t MlDsaSecKeyLen(SigScheme scheme);
 size_t MlDsaSigLen(SigScheme scheme);
 
+/**
+ * Secret-key bytes. Backed by Core's secure_allocator: memory comes from the locked
+ * pool (not swappable where the OS allows) and is memory_cleanse()d on free, so
+ * copies, moves-from and destruction never leave key material behind. Same type as
+ * CKeyingMaterial, so wallet encryption helpers accept it directly.
+ */
+using SecureBytes = std::vector<uint8_t, secure_allocator<uint8_t>>;
+
 struct MlDsaKeyPair {
     SigScheme scheme{SigScheme::ECDSA};
     std::vector<uint8_t> pk;
-    std::vector<uint8_t> sk;
+    SecureBytes sk;
 };
+
+/** Zero and release a secret immediately (does not wait for destruction). */
+void WipeSecret(SecureBytes& secret);
 
 /**
  * Generate a fresh ML-DSA keypair with liboqs.
  * Returns false for SigScheme::ECDSA or if liboqs lacks the parameter set.
- * NOTE: the secret key is NOT wiped on destruction yet; callers must handle that
- * until a proper secure-allocator wrapper lands (see doc/WALLET-PQC.md).
+ * The secret key lives in SecureBytes (locked, zeroed on free).
  */
 bool MlDsaKeygen(SigScheme scheme, MlDsaKeyPair& out);
 

@@ -97,12 +97,17 @@ bool MlDsaKeygen(SigScheme scheme, MlDsaKeyPair& out)
     out.pk.assign(sig->length_public_key, 0);
     out.sk.assign(sig->length_secret_key, 0);
     if (OQS_SIG_keypair(sig.get(), out.pk.data(), out.sk.data()) != OQS_SUCCESS) {
-        OQS_MEM_cleanse(out.sk.data(), out.sk.size());
         out.pk.clear();
-        out.sk.clear();
+        WipeSecret(out.sk);
         return false;
     }
     return true;
+}
+
+void WipeSecret(SecureBytes& secret)
+{
+    if (!secret.empty()) OQS_MEM_cleanse(secret.data(), secret.size());
+    SecureBytes().swap(secret); // deallocate now; secure_allocator cleanses again on free
 }
 
 bool MlDsaSign(SigScheme scheme, std::span<const uint8_t> sk, std::span<const uint8_t> msg, std::vector<uint8_t>& sig_out)

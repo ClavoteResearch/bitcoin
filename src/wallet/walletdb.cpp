@@ -236,7 +236,7 @@ bool WalletBatch::WriteDescriptorKey(const uint256& desc_id, const CPubKey& pubk
     return WriteIC(std::make_pair(DBKeys::WALLETDESCRIPTORKEY, std::make_pair(desc_id, pubkey)), std::make_pair(privkey, keypair_hash), false);
 }
 
-bool WalletBatch::WriteDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const std::vector<unsigned char>& sk)
+bool WalletBatch::WriteDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const qcoin::pqc::SecureBytes& sk)
 {
     // Qcoin / Option B: the secret key is stored in plaintext; wallet encryption does not cover it yet.
     const auto keypair_hash = Hash(pk, sk);
@@ -966,7 +966,8 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
                 assert(desc_id == id);
                 key >> pk_hash;
                 uint8_t scheme;
-                std::vector<unsigned char> pk, sk;
+                std::vector<unsigned char> pk;
+                qcoin::pqc::SecureBytes sk; // deserialised straight into locked, zero-on-free memory
                 uint256 hash;
                 value >> scheme >> pk >> sk >> hash;
                 if (Hash(pk, sk) != hash) {

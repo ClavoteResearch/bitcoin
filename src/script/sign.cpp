@@ -124,7 +124,9 @@ bool MutableTransactionSignatureCreator::CreateMlDsaAttestation(const SigningPro
     const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(param_id, qcoin::v2::PubKeyHash(kp.pk), sighash);
     const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
     std::vector<uint8_t> sig;
-    if (!qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig)) return false;
+    const bool signed_ok = qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig);
+    qcoin::pqc::WipeSecret(kp.sk); // the secret is not needed past this point
+    if (!signed_ok) return false;
     attestation = qcoin::v2::BuildAttestation(param_id, kp.pk, sig);
     LogInfo("Qcoin: built %s attestation (%u bytes) for witness v2 input %u", qcoin::pqc::SigSchemeName(kp.scheme), unsigned(attestation.size()), nIn);
     return true;

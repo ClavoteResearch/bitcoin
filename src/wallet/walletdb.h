@@ -12,6 +12,7 @@
 #include <script/sign.h>
 #include <wallet/db.h>
 #include <wallet/walletutil.h>
+#include <pqc/pqc.h> // Qcoin: SecureBytes
 
 #include <cstdint>
 #include <string>
@@ -259,7 +260,7 @@ public:
     bool WriteDescriptorKey(const uint256& desc_id, const CPubKey& pubkey, const CPrivKey& privkey);
     bool WriteCryptedDescriptorKey(const uint256& desc_id, const CPubKey& pubkey, const std::vector<unsigned char>& secret);
     //! Qcoin / Option B: plaintext ML-DSA keypair for a wpq() descriptor, keyed by (desc_id, SHA256(pk)).
-    bool WriteDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const std::vector<unsigned char>& sk);
+    bool WriteDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const qcoin::pqc::SecureBytes& sk);
     //! Qcoin / Option B: encrypted ML-DSA secret (AES-256-CBC under the wallet master key, IV = pk_hash); erases the plaintext record.
     bool WriteCryptedDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const std::vector<unsigned char>& crypted_sk);
     bool WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor);

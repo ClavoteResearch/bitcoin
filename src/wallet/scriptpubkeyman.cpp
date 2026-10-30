@@ -1046,9 +1046,8 @@ bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, Walle
     // Qcoin / Option B: ML-DSA secrets, same master key, IV = SHA256(pk).
     std::map<uint256, CryptedMlDsaKey> crypted_mldsa;
     for (const auto& [pk_hash, kp] : m_map_mldsa_keys) {
-        CKeyingMaterial secret(kp.sk.begin(), kp.sk.end());
         std::vector<unsigned char> crypted_secret;
-        if (!EncryptSecret(master_key, secret, pk_hash, crypted_secret)) {
+        if (!EncryptSecret(master_key, kp.sk, pk_hash, crypted_secret)) {
             return false;
         }
         if (!batch->WriteCryptedDescriptorMlDsaKey(GetID(), pk_hash, static_cast<uint8_t>(kp.scheme), kp.pk, crypted_secret)) {
@@ -1304,9 +1303,8 @@ bool DescriptorScriptPubKeyMan::AddMlDsaKeyWithDB(WalletBatch& batch, const uint
             return false;
         }
         std::vector<unsigned char> crypted_secret;
-        CKeyingMaterial secret(key.sk.begin(), key.sk.end());
         if (!m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
-                return EncryptSecret(encryption_key, secret, pk_hash, crypted_secret);
+                return EncryptSecret(encryption_key, key.sk, pk_hash, crypted_secret);
             })) {
             return false;
         }
@@ -1342,7 +1340,7 @@ std::map<uint256, qcoin::pqc::MlDsaKeyPair> DescriptorScriptPubKeyMan::GetMlDsaK
             qcoin::pqc::MlDsaKeyPair kp;
             kp.scheme = ck.scheme;
             kp.pk = ck.pk;
-            kp.sk.assign(plain.begin(), plain.end()); // NOTE: leaves the secure allocator; see doc/WALLET-PQC.md
+            kp.sk = std::move(plain); // stays in secure (locked, zero-on-free) memory
             keys[pk_hash] = std::move(kp);
         }
         return keys;
