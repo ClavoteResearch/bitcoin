@@ -13,6 +13,7 @@
 #include <musig.h>
 #include <policy/policy.h>
 #include <pqc/pqc.h> // Qcoin: wallet PQC scheme switch + ML-DSA stubs
+#include <util/log.h>
 #include <prevector.h>
 #include <primitives/transaction.h>
 #include <script/keyorigin.h>
@@ -77,15 +78,27 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
 
     uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
 
-    // Qcoin: ML-DSA signing path. The SigningProvider cannot yet supply an
-    // ML-DSA secret key (see doc/WALLET-PQC.md), so this branch fails closed
-    // until key storage and descriptor support land. ECDSA is unaffected.
+    // Qcoin: ML-DSA signing path. The secret key comes from the development
+    // MlDsaKeyStore (looked up by this key's ID, falling back to the wallet's
+    // default ML-DSA key) rather than from the SigningProvider, which is still
+    // secp256k1-only. The resulting signature is NOT yet a valid spend: the
+    // scriptPubKey commits to a secp256k1 pubkey, so consensus verification
+    // of an ML-DSA signature against it fails. See doc/WALLET-PQC.md.
     if (const auto scheme = qcoin::pqc::GetWalletSigScheme(); scheme != qcoin::pqc::SigScheme::ECDSA) {
-        std::vector<uint8_t> mldsa_sk; // TODO(qcoin): provider.GetMlDsaKey(address, mldsa_sk)
-        std::vector<uint8_t> mldsa_sig;
-        if (!qcoin::pqc::MlDsaSign(scheme, mldsa_sk, std::span<const uint8_t>(hash.begin(), hash.size()), mldsa_sig)) {
+        qcoin::pqc::KeyId id;
+        std::copy(address.begin(), address.end(), id.begin());
+        const auto kp = qcoin::pqc::MlDsaKeyStore::Instance().GetForSigning(id, scheme);
+        if (!kp) {
+            LogInfo("Qcoin: no %s key in store for %s; cannot sign", qcoin::pqc::SigSchemeName(scheme), address.ToString());
             return false;
         }
+        std::vector<uint8_t> mldsa_sig;
+        if (!qcoin::pqc::MlDsaSign(scheme, kp->sk, std::span<const uint8_t>(hash.begin(), hash.size()), mldsa_sig)) {
+            LogInfo("Qcoin: %s sign failed for %s", qcoin::pqc::SigSchemeName(scheme), address.ToString());
+            return false;
+        }
+        LogInfo("Qcoin: %s sign attempt for %s produced %u-byte signature (pk=%u bytes); spend will not verify until outputs commit to ML-DSA keys",
+                qcoin::pqc::SigSchemeName(scheme), address.ToString(), unsigned(mldsa_sig.size()), unsigned(kp->pk.size()));
         vchSig = std::move(mldsa_sig);
         vchSig.push_back((unsigned char)hashtype);
         return true;

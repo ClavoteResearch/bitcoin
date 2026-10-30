@@ -5,7 +5,7 @@
 
 #include <wallet/wallet.h>
 
-#include <pqc/pqc.h> // Qcoin: ML-DSA keygen stub
+#include <pqc/pqc.h> // Qcoin: ML-DSA keygen stub + dev key store
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
@@ -3027,6 +3027,19 @@ std::shared_ptr<CWallet> CWallet::LoadExisting(WalletContext& context, const std
 
     walletInstance->WalletLogPrintf("Wallet completed loading in %15dms", Ticks<std::chrono::milliseconds>(SteadyClock::now() - start));
 
+    // Qcoin: restore any development ML-DSA keys saved next to the wallet database.
+    {
+        const fs::path key_file = fs::PathFromString(walletFile).parent_path() / qcoin::pqc::MlDsaKeyStore::kFileName;
+        if (fs::exists(key_file)) {
+            auto& store = qcoin::pqc::MlDsaKeyStore::Instance();
+            if (store.Load(fs::PathToString(key_file))) {
+                walletInstance->WalletLogPrintf("Qcoin: loaded ML-DSA key store from %s (%u key(s) total)", fs::PathToString(key_file), unsigned(store.Size()));
+            } else {
+                warnings.push_back(strprintf(_("Qcoin: ML-DSA key file %s is unreadable or malformed; ML-DSA signing unavailable"), fs::PathToString(key_file)));
+            }
+        }
+    }
+
     // Try to top up keypool. No-op if the wallet is locked.
     walletInstance->TopUpKeyPool();
 
@@ -3482,14 +3495,25 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     CExtKey master_key;
     master_key.SetSeed(seed_key);
 
-    // Qcoin: ML-DSA keygen call site. Keys are generated to prove the liboqs path
-    // works end to end but are NOT persisted or used yet (no descriptor, DB record,
-    // or address type exists for them). See doc/WALLET-PQC.md.
+    // Qcoin: ML-DSA keygen call site. The keypair is stored in the development
+    // MlDsaKeyStore under the HD seed key's ID, marked as the wallet's default
+    // ML-DSA key, and written UNENCRYPTED to mldsa_keys.dat next to the wallet
+    // database. No descriptor, DB record, or address type exists for it yet.
+    // See doc/WALLET-PQC.md.
     if (const auto scheme = qcoin::pqc::GetWalletSigScheme(); scheme != qcoin::pqc::SigScheme::ECDSA) {
         qcoin::pqc::MlDsaKeyPair pq_keys;
         if (qcoin::pqc::MlDsaKeygen(scheme, pq_keys)) {
-            LogInfo("Qcoin: generated %s keypair (pk=%u bytes, sk=%u bytes); not persisted, descriptor support pending",
-                    qcoin::pqc::SigSchemeName(scheme), unsigned(pq_keys.pk.size()), unsigned(pq_keys.sk.size()));
+            const CKeyID seed_id = seed.GetID();
+            qcoin::pqc::KeyId id;
+            std::copy(seed_id.begin(), seed_id.end(), id.begin());
+            const unsigned pk_len = pq_keys.pk.size(), sk_len = pq_keys.sk.size();
+            auto& store = qcoin::pqc::MlDsaKeyStore::Instance();
+            store.Add(id, std::move(pq_keys), /*make_default=*/true);
+            const fs::path key_file = fs::PathFromString(GetDatabase().Filename()).parent_path() / qcoin::pqc::MlDsaKeyStore::kFileName;
+            const bool saved = store.Save(fs::PathToString(key_file));
+            WalletLogPrintf("Qcoin: generated %s keypair (pk=%u bytes, sk=%u bytes) for seed %s; stored in memory, %s %s",
+                            qcoin::pqc::SigSchemeName(scheme), pk_len, sk_len, seed_id.ToString(),
+                            saved ? "saved to" : "FAILED to save to", fs::PathToString(key_file));
         } else {
             LogWarning("Qcoin: %s keygen failed (liboqs parameter set unavailable?)", qcoin::pqc::SigSchemeName(scheme));
         }
