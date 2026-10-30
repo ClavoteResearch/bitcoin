@@ -66,6 +66,11 @@ else()
   add_library(bitcoin_ipc STATIC EXCLUDE_FROM_ALL ipc/stub.cpp)
 endif()
 
+# Qcoin: ML-DSA-87 verification backend (liboqs)
+find_path(OQS_INCLUDE_DIR NAMES oqs/oqs.h REQUIRED)
+find_library(OQS_LIBRARY NAMES oqs REQUIRED)
+message(STATUS "Qcoin: liboqs include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
+
 add_library(bitcoin_consensus STATIC EXCLUDE_FROM_ALL
   arith_uint256.cpp
   consensus/merkle.cpp
@@ -85,6 +90,8 @@ target_link_libraries(bitcoin_consensus
     bitcoin_crypto
     secp256k1
 )
+target_include_directories(bitcoin_consensus PUBLIC ${OQS_INCLUDE_DIR})
+target_link_libraries(bitcoin_consensus PUBLIC ${OQS_LIBRARY})
 
 if(WITH_ZMQ)
   add_subdirectory(zmq)
