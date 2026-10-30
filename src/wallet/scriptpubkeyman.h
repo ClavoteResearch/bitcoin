@@ -285,6 +285,15 @@ private:
     //! Qcoin / Option B: ML-DSA keypairs (by SHA256(pk)) backing this wpq() descriptor.
     //! Persisted as walletdescriptormldsakey records, UNENCRYPTED (see doc/WALLET-PQC.md).
     std::map<uint256, qcoin::pqc::MlDsaKeyPair> m_map_mldsa_keys GUARDED_BY(cs_desc_man);
+    //! Qcoin / Option B: encrypted form (walletdescriptormldsackey). Secret is AES-256-CBC under the wallet master key, IV = pk_hash.
+    struct CryptedMlDsaKey {
+        qcoin::pqc::SigScheme scheme;
+        std::vector<unsigned char> pk;
+        std::vector<unsigned char> crypted_sk;
+    };
+    std::map<uint256, CryptedMlDsaKey> m_map_crypted_mldsa_keys GUARDED_BY(cs_desc_man);
+    //! Decrypted (when encrypted and unlocked) or plaintext ML-DSA keys for signing.
+    std::map<uint256, qcoin::pqc::MlDsaKeyPair> GetMlDsaKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
     //! keeps track of whether Unlock has run a thorough check before
     bool m_decryption_thoroughly_checked = false;
@@ -374,6 +383,7 @@ public:
     bool AddMlDsaKeyWithDB(WalletBatch& batch, const uint256& pk_hash, const qcoin::pqc::MlDsaKeyPair& key);
     //! Qcoin / Option B: in-memory only, used while loading the wallet database.
     void LoadMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair key);
+    void LoadCryptedMlDsaKey(const uint256& pk_hash, uint8_t scheme, std::vector<unsigned char> pk, std::vector<unsigned char> crypted_sk);
     size_t MlDsaKeyCount() const;
     bool HasPrivKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     //! Retrieve the particular key if it is available. Returns nullopt if the key is not in the wallet, or if the wallet is locked.

@@ -62,6 +62,7 @@ const std::string WALLETDESCRIPTORLHCACHE{"walletdescriptorlhcache"};
 const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
 const std::string WALLETDESCRIPTORMLDSAKEY{"walletdescriptormldsakey"}; // Qcoin / Option B
+const std::string WALLETDESCRIPTORMLDSACKEY{"walletdescriptormldsackey"}; // Qcoin / Option B (encrypted)
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
@@ -241,6 +242,23 @@ bool WalletBatch::WriteDescriptorMlDsaKey(const uint256& desc_id, const uint256&
     const auto keypair_hash = Hash(pk, sk);
     return WriteIC(std::make_pair(DBKeys::WALLETDESCRIPTORMLDSAKEY, std::make_pair(desc_id, pk_hash)),
                    std::make_pair(scheme, std::make_pair(pk, std::make_pair(sk, keypair_hash))), false);
+}
+
+bool WalletBatch::WriteCryptedDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const std::vector<unsigned char>& crypted_sk)
+{
+    const auto descriptor_key{std::make_pair(desc_id, pk_hash)};
+    const auto plaintext_key{std::make_pair(DBKeys::WALLETDESCRIPTORMLDSAKEY, descriptor_key)};
+    const auto encrypted_key{std::make_pair(DBKeys::WALLETDESCRIPTORMLDSACKEY, descriptor_key)};
+    const auto value{std::make_pair(scheme, std::make_pair(pk, crypted_sk))};
+
+    // Keep the write and erase atomic even when the caller has not started a transaction
+    const bool own_txn{!HasActiveTxn()};
+    if (own_txn && !TxnBegin()) return false;
+    if (!WriteIC(encrypted_key, value, /*fOverwrite=*/false) || !EraseIC(plaintext_key) || (own_txn && !TxnCommit())) {
+        if (own_txn) TxnAbort();
+        return false;
+    }
+    return true;
 }
 
 bool WalletBatch::WriteCryptedDescriptorKey(const uint256& desc_id, const CPubKey& pubkey, const std::vector<unsigned char>& secret)
@@ -972,7 +990,32 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
                 return DBErrors::LOAD_OK;
             });
             result = std::max(result, mres.m_result);
-            if (num_mldsa > 0) pwallet->WalletLogPrintf("Qcoin: loaded %u ML-DSA key(s) for descriptor %s", num_mldsa, id.ToString().substr(0, 16));
+
+            unsigned num_cmldsa = 0;
+            DataStream cprefix = PrefixStream(DBKeys::WALLETDESCRIPTORMLDSACKEY, id);
+            LoadResult cmres = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORMLDSACKEY, cprefix,
+                [&id, mldsa_spkm, &num_cmldsa] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+                uint256 desc_id, pk_hash;
+                key >> desc_id;
+                assert(desc_id == id);
+                key >> pk_hash;
+                uint8_t scheme;
+                std::vector<unsigned char> pk, crypted_sk;
+                value >> scheme >> pk >> crypted_sk;
+                if (scheme == 0 || scheme > static_cast<uint8_t>(qcoin::pqc::SigScheme::MLDSA87) || crypted_sk.empty()) {
+                    err = "Error reading wallet database: encrypted ML-DSA key record corrupt";
+                    return DBErrors::CORRUPT;
+                }
+                if (!mldsa_spkm) {
+                    err = "Error reading wallet database: encrypted ML-DSA key for a non-descriptor ScriptPubKeyMan";
+                    return DBErrors::CORRUPT;
+                }
+                mldsa_spkm->LoadCryptedMlDsaKey(pk_hash, scheme, std::move(pk), std::move(crypted_sk));
+                ++num_cmldsa;
+                return DBErrors::LOAD_OK;
+            });
+            result = std::max(result, cmres.m_result);
+            if (num_mldsa + num_cmldsa > 0) pwallet->WalletLogPrintf("Qcoin: loaded %u ML-DSA key(s) for descriptor %s (%u plaintext, %u encrypted)", num_mldsa + num_cmldsa, id.ToString().substr(0, 16), num_mldsa, num_cmldsa);
         }
 
         return result;

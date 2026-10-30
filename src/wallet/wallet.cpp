@@ -3481,8 +3481,8 @@ util::Result<CTxDestination> CWallet::CreateMlDsaKeyAndImportWithDB(WalletBatch&
     if (IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
         return util::Error{Untranslated("wallet has private keys disabled")};
     }
-    if (HasEncryptionKeys()) {
-        return util::Error{Untranslated("ML-DSA keys are stored unencrypted and cannot be added to an encrypted wallet yet")};
+    if (HasEncryptionKeys() && IsLocked()) {
+        return util::Error{Untranslated("wallet is locked; unlock it with walletpassphrase first")};
     }
 
     // 1. Fresh ML-DSA keypair. It is written to the wallet database below as a

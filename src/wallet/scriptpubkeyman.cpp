@@ -979,17 +979,29 @@ bool DescriptorScriptPubKeyMan::IsMine(const CScript& script) const
 bool DescriptorScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key)
 {
     LOCK(cs_desc_man);
-    if (!m_map_keys.empty()) {
+    if (!m_map_keys.empty() || !m_map_mldsa_keys.empty()) {
         return false;
     }
 
-    bool keyPass = m_map_crypted_keys.empty(); // Always pass when there are no encrypted keys
+    bool keyPass = m_map_crypted_keys.empty() && m_map_crypted_mldsa_keys.empty(); // Always pass when there are no encrypted keys
     bool keyFail = false;
     for (const auto& mi : m_map_crypted_keys) {
         const CPubKey &pubkey = mi.second.first;
         const std::vector<unsigned char> &crypted_secret = mi.second.second;
         CKey key;
         if (!DecryptKey(master_key, crypted_secret, pubkey, key)) {
+            keyFail = true;
+            break;
+        }
+        keyPass = true;
+        if (m_decryption_thoroughly_checked)
+            break;
+    }
+    // Qcoin / Option B: an ML-DSA secret decrypts correctly iff it has the parameter set's length.
+    for (const auto& [pk_hash, ck] : m_map_crypted_mldsa_keys) {
+        if (keyFail) break;
+        CKeyingMaterial plain;
+        if (!DecryptSecret(master_key, ck.crypted_sk, pk_hash, plain) || plain.size() != qcoin::pqc::MlDsaSecKeyLen(ck.scheme)) {
             keyFail = true;
             break;
         }
@@ -1011,7 +1023,7 @@ bool DescriptorScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master
 bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch)
 {
     LOCK(cs_desc_man);
-    if (!m_map_crypted_keys.empty()) {
+    if (!m_map_crypted_keys.empty() || !m_map_crypted_mldsa_keys.empty()) {
         return false;
     }
 
@@ -1031,11 +1043,27 @@ bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, Walle
         crypted_keys[pubkey.GetID()] = make_pair(pubkey, std::move(crypted_secret));
     }
 
+    // Qcoin / Option B: ML-DSA secrets, same master key, IV = SHA256(pk).
+    std::map<uint256, CryptedMlDsaKey> crypted_mldsa;
+    for (const auto& [pk_hash, kp] : m_map_mldsa_keys) {
+        CKeyingMaterial secret(kp.sk.begin(), kp.sk.end());
+        std::vector<unsigned char> crypted_secret;
+        if (!EncryptSecret(master_key, secret, pk_hash, crypted_secret)) {
+            return false;
+        }
+        if (!batch->WriteCryptedDescriptorMlDsaKey(GetID(), pk_hash, static_cast<uint8_t>(kp.scheme), kp.pk, crypted_secret)) {
+            return false;
+        }
+        crypted_mldsa[pk_hash] = CryptedMlDsaKey{kp.scheme, kp.pk, std::move(crypted_secret)};
+    }
+
     batch->RegisterTxnListener({
-        .on_commit = [this, keys = std::move(crypted_keys)]() mutable {
+        .on_commit = [this, keys = std::move(crypted_keys), mldsa = std::move(crypted_mldsa)]() mutable {
             LOCK(cs_desc_man);
             m_map_crypted_keys = std::move(keys);
             m_map_keys.clear();
+            m_map_crypted_mldsa_keys = std::move(mldsa);
+            m_map_mldsa_keys.clear();
         },
         .on_abort = [] {}});
     return true;
@@ -1269,9 +1297,57 @@ bool DescriptorScriptPubKeyMan::CanGetAddresses(bool internal) const
 bool DescriptorScriptPubKeyMan::AddMlDsaKeyWithDB(WalletBatch& batch, const uint256& pk_hash, const qcoin::pqc::MlDsaKeyPair& key)
 {
     LOCK(cs_desc_man);
+    if (m_map_mldsa_keys.contains(pk_hash) || m_map_crypted_mldsa_keys.contains(pk_hash)) return true;
+
+    if (m_storage.HasEncryptionKeys()) {
+        if (m_storage.IsLocked()) {
+            return false;
+        }
+        std::vector<unsigned char> crypted_secret;
+        CKeyingMaterial secret(key.sk.begin(), key.sk.end());
+        if (!m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return EncryptSecret(encryption_key, secret, pk_hash, crypted_secret);
+            })) {
+            return false;
+        }
+        if (!batch.WriteCryptedDescriptorMlDsaKey(GetID(), pk_hash, static_cast<uint8_t>(key.scheme), key.pk, crypted_secret)) {
+            return false;
+        }
+        m_map_crypted_mldsa_keys[pk_hash] = CryptedMlDsaKey{key.scheme, key.pk, std::move(crypted_secret)};
+        return true;
+    }
+
     if (!batch.WriteDescriptorMlDsaKey(GetID(), pk_hash, static_cast<uint8_t>(key.scheme), key.pk, key.sk)) return false;
     m_map_mldsa_keys[pk_hash] = key;
     return true;
+}
+
+void DescriptorScriptPubKeyMan::LoadCryptedMlDsaKey(const uint256& pk_hash, uint8_t scheme, std::vector<unsigned char> pk, std::vector<unsigned char> crypted_sk)
+{
+    LOCK(cs_desc_man);
+    m_map_crypted_mldsa_keys[pk_hash] = CryptedMlDsaKey{static_cast<qcoin::pqc::SigScheme>(scheme), std::move(pk), std::move(crypted_sk)};
+}
+
+std::map<uint256, qcoin::pqc::MlDsaKeyPair> DescriptorScriptPubKeyMan::GetMlDsaKeys() const
+{
+    AssertLockHeld(cs_desc_man);
+    if (m_storage.HasEncryptionKeys() && !m_storage.IsLocked()) {
+        std::map<uint256, qcoin::pqc::MlDsaKeyPair> keys;
+        for (const auto& [pk_hash, ck] : m_map_crypted_mldsa_keys) {
+            CKeyingMaterial plain;
+            const bool ok = m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return DecryptSecret(encryption_key, ck.crypted_sk, pk_hash, plain);
+            });
+            if (!ok || plain.size() != qcoin::pqc::MlDsaSecKeyLen(ck.scheme)) continue;
+            qcoin::pqc::MlDsaKeyPair kp;
+            kp.scheme = ck.scheme;
+            kp.pk = ck.pk;
+            kp.sk.assign(plain.begin(), plain.end()); // NOTE: leaves the secure allocator; see doc/WALLET-PQC.md
+            keys[pk_hash] = std::move(kp);
+        }
+        return keys;
+    }
+    return m_map_mldsa_keys;
 }
 
 void DescriptorScriptPubKeyMan::LoadMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair key)
@@ -1283,7 +1359,7 @@ void DescriptorScriptPubKeyMan::LoadMlDsaKey(const uint256& pk_hash, qcoin::pqc:
 size_t DescriptorScriptPubKeyMan::MlDsaKeyCount() const
 {
     LOCK(cs_desc_man);
-    return m_map_mldsa_keys.size();
+    return m_map_mldsa_keys.size() + m_map_crypted_mldsa_keys.size();
 }
 
 bool DescriptorScriptPubKeyMan::HavePrivateKeys() const
@@ -1375,7 +1451,7 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
     // Qcoin / Option B: ML-DSA secrets for wpq() descriptors (not gated on HavePrivateKeys,
     // which only counts secp256k1 keys).
     if (include_private) {
-        for (const auto& [pk_hash, kp] : m_map_mldsa_keys) out_keys->mldsa_keys[pk_hash] = kp;
+        for (auto& [pk_hash, kp] : GetMlDsaKeys()) out_keys->mldsa_keys[pk_hash] = std::move(kp);
     }
 
     return out_keys;
