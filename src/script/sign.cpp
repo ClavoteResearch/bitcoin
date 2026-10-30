@@ -12,6 +12,7 @@
 #include <key.h>
 #include <musig.h>
 #include <policy/policy.h>
+#include <pqc/pqc.h> // Qcoin: wallet PQC scheme switch + ML-DSA stubs
 #include <prevector.h>
 #include <primitives/transaction.h>
 #include <script/keyorigin.h>
@@ -75,6 +76,21 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
     if ((hashtype & SIGHASH_OUTPUT_MASK) == SIGHASH_SINGLE && nIn >= m_txto.vout.size()) return false;
 
     uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
+
+    // Qcoin: ML-DSA signing path. The SigningProvider cannot yet supply an
+    // ML-DSA secret key (see doc/WALLET-PQC.md), so this branch fails closed
+    // until key storage and descriptor support land. ECDSA is unaffected.
+    if (const auto scheme = qcoin::pqc::GetWalletSigScheme(); scheme != qcoin::pqc::SigScheme::ECDSA) {
+        std::vector<uint8_t> mldsa_sk; // TODO(qcoin): provider.GetMlDsaKey(address, mldsa_sk)
+        std::vector<uint8_t> mldsa_sig;
+        if (!qcoin::pqc::MlDsaSign(scheme, mldsa_sk, std::span<const uint8_t>(hash.begin(), hash.size()), mldsa_sig)) {
+            return false;
+        }
+        vchSig = std::move(mldsa_sig);
+        vchSig.push_back((unsigned char)hashtype);
+        return true;
+    }
+
     if (!key.Sign(hash, vchSig))
         return false;
     vchSig.push_back((unsigned char)hashtype);

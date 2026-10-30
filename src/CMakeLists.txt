@@ -70,6 +70,15 @@ endif()
 find_path(OQS_INCLUDE_DIR NAMES oqs/oqs.h REQUIRED)
 find_library(OQS_LIBRARY NAMES oqs REQUIRED)
 message(STATUS "Qcoin: liboqs include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
+option(QCOIN_ECDSA_FALLBACK "Fall back to secp256k1 ECDSA verification for non-ML-DSA-sized signatures" ON)
+message(STATUS "Qcoin: QCOIN_ECDSA_FALLBACK=${QCOIN_ECDSA_FALLBACK}")
+
+# Qcoin: wallet-side PQC scheme switch and liboqs ML-DSA keygen/sign stubs
+add_library(qcoin_pqc STATIC EXCLUDE_FROM_ALL
+  ${PROJECT_SOURCE_DIR}/fork/src/pqc/pqc.cpp
+)
+target_include_directories(qcoin_pqc PUBLIC ${PROJECT_SOURCE_DIR}/fork/src ${OQS_INCLUDE_DIR})
+target_link_libraries(qcoin_pqc PRIVATE core_interface PUBLIC ${OQS_LIBRARY})
 
 add_library(bitcoin_consensus STATIC EXCLUDE_FROM_ALL
   arith_uint256.cpp
@@ -92,6 +101,9 @@ target_link_libraries(bitcoin_consensus
 )
 target_include_directories(bitcoin_consensus PUBLIC ${OQS_INCLUDE_DIR})
 target_link_libraries(bitcoin_consensus PUBLIC ${OQS_LIBRARY})
+if(QCOIN_ECDSA_FALLBACK)
+  target_compile_definitions(bitcoin_consensus PUBLIC QCOIN_ECDSA_FALLBACK)
+endif()
 
 if(WITH_ZMQ)
   add_subdirectory(zmq)
@@ -155,6 +167,8 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   script/solver.cpp
 )
 target_link_libraries(bitcoin_common
+  PUBLIC
+    qcoin_pqc
   PRIVATE
     core_interface
     bitcoin_consensus

@@ -99,6 +99,9 @@ target_link_libraries(crc32c PRIVATE kernel_warn_interface)
 
 target_include_directories(bitcoinkernel PUBLIC ${OQS_INCLUDE_DIR})
 target_link_libraries(bitcoinkernel PUBLIC ${OQS_LIBRARY})
+if(QCOIN_ECDSA_FALLBACK)
+  target_compile_definitions(bitcoinkernel PUBLIC QCOIN_ECDSA_FALLBACK)
+endif()
 target_link_libraries(bitcoinkernel
   PRIVATE
     core_interface

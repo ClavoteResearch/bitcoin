@@ -5,6 +5,8 @@
 
 #include <wallet/wallet.h>
 
+#include <pqc/pqc.h> // Qcoin: ML-DSA keygen stub
+
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <addresstype.h>
@@ -3479,6 +3481,19 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     // Get the extended key
     CExtKey master_key;
     master_key.SetSeed(seed_key);
+
+    // Qcoin: ML-DSA keygen call site. Keys are generated to prove the liboqs path
+    // works end to end but are NOT persisted or used yet (no descriptor, DB record,
+    // or address type exists for them). See doc/WALLET-PQC.md.
+    if (const auto scheme = qcoin::pqc::GetWalletSigScheme(); scheme != qcoin::pqc::SigScheme::ECDSA) {
+        qcoin::pqc::MlDsaKeyPair pq_keys;
+        if (qcoin::pqc::MlDsaKeygen(scheme, pq_keys)) {
+            LogInfo("Qcoin: generated %s keypair (pk=%u bytes, sk=%u bytes); not persisted, descriptor support pending",
+                    qcoin::pqc::SigSchemeName(scheme), unsigned(pq_keys.pk.size()), unsigned(pq_keys.sk.size()));
+        } else {
+            LogWarning("Qcoin: %s keygen failed (liboqs parameter set unavailable?)", qcoin::pqc::SigSchemeName(scheme));
+        }
+    }
 
     SetupDescriptorScriptPubKeyMans(batch, master_key);
 }
