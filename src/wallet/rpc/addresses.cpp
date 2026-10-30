@@ -69,6 +69,41 @@ RPCMethod getnewaddress()
     };
 }
 
+RPCMethod getnewmldsaaddress()
+{
+    return RPCMethod{
+        "getnewmldsaaddress",
+        "Qcoin experimental: generate a fresh ML-DSA keypair, store it in the development key store,\n"
+        "import the matching wpq() descriptor and return its witness v2 address (bech32m, bc1z... / bcrt1z...).\n"
+        "Requires the node to run with -walletsigscheme=mldsa44 (or mldsa87 in experimental builds).\n"
+        "Receiving works in every build; spending requires QCOIN_WITNESS_V2_EXPERIMENTAL=ON. See doc/WALLET-PQC.md.\n",
+        {
+            {"label", RPCArg::Type::STR, RPCArg::Default{"mldsa"}, "The label name for the address to be linked to."},
+        },
+        RPCResult{
+            RPCResult::Type::STR, "address", "The new witness v2 ML-DSA address"
+        },
+        RPCExamples{
+            HelpExampleCli("getnewmldsaaddress", "")
+    + HelpExampleRpc("getnewmldsaaddress", "\"cold\"")
+        },
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    LOCK(pwallet->cs_wallet);
+
+    const std::string label = request.params[0].isNull() ? std::string{"mldsa"} : LabelFromValue(request.params[0]);
+    auto dest = pwallet->GetNewMlDsaDestination(label);
+    if (!dest) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(dest).original);
+    }
+    return EncodeDestination(*dest);
+},
+    };
+}
+
 RPCMethod getrawchangeaddress()
 {
     return RPCMethod{

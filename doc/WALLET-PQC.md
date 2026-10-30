@@ -110,11 +110,15 @@ What exists:
   `GetScriptForDestination` round-trips. The `Qcoin / Option B` markers for a
   dedicated destination and `OutputType` remain for when `-addresstype` support
   is wanted.
-- **Wallet import.** At wallet creation with a non-ECDSA scheme, after the
-  ML-DSA keypair is generated and stored, the wallet imports
-  `wpq(<pk>)` as a non-ranged descriptor under label `mldsa`
-  (`CWallet::SetupOwnDescriptorScriptPubKeyMans`). `getaddressesbylabel mldsa`
-  returns the `bcrt1z` address; the output is `IsMine` and spendable.
+- **Wallet import and address generation.** `CWallet::CreateMlDsaKeyAndImportWithDB`
+  generates a keypair, stores it under `Hash160(pk)`, and imports `wpq(<pk>)` as a
+  non-ranged descriptor with a label. Wallet creation with a non-ECDSA scheme
+  calls it once (label `mldsa`, marked as the store's default key). The
+  `getnewmldsaaddress [label]` RPC calls it again on demand, so each call yields
+  a new key and a new `bcrt1z` address with no manual descriptor import. There
+  is no derivation: every address is an independent keypair in `mldsa_keys.dat`
+  (back it up with the wallet). `getnewaddress`/`-addresstype` still cannot
+  produce v2 addresses, since that needs the dedicated `OutputType`.
 - **Signing.** `BaseSignatureCreator::CreateMlDsaAttestation` builds the
   one-entry attestation. `ProduceSignature` routes any 32-byte witness v2
   program to it (experimental builds only), skipping the script solver, and
@@ -135,20 +139,21 @@ What exists:
   scheme now only selects which ML-DSA parameter set the wallet generates and
   attests with.
 
-Regtest flow (see `fork/test/regtest_v2_spend.sh`):
+Regtest flow (see `fork/test/regtest_v2_spend.sh` and `fork/test/regtest_v2_multi.sh`):
 
 ```bash
 bitcoind -regtest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
 bitcoin-cli -regtest createwallet miner;  bitcoin-cli -regtest createwallet pq
 M=$(bitcoin-cli -regtest -rpcwallet=miner getnewaddress); bitcoin-cli -regtest generatetoaddress 101 $M
-PQ=$(bitcoin-cli -regtest -rpcwallet=pq getaddressesbylabel mldsa | jq -r 'keys[0]')   # bcrt1z...
+PQ=$(bitcoin-cli -regtest -rpcwallet=pq getaddressesbylabel mldsa | jq -r 'keys[0]')   # bcrt1z... (created with the wallet)
+PQ2=$(bitcoin-cli -regtest -rpcwallet=pq getnewmldsaaddress "second")                 # another bcrt1z..., fresh key
 bitcoin-cli -regtest -rpcwallet=miner sendtoaddress $PQ 10; bitcoin-cli -regtest generatetoaddress 1 $M
 bitcoin-cli -regtest -rpcwallet=pq sendtoaddress $M 5                                  # ML-DSA attestation spend
 bitcoin-cli -regtest generatetoaddress 1 $M                                            # accepted into a block
 ```
 
 Not done: `-addresstype` / `getnewaddress` for v2 (needs the dedicated
-destination and `OutputType`), script-path `wpq(KEY,{TREE})`, PSBT fields,
+destination and `OutputType`; use `getnewmldsaaddress` instead), script-path `wpq(KEY,{TREE})`, PSBT fields,
 encrypted key storage, HD derivation, and any of the canonical-encoding and
 deployment-flag items below.
 

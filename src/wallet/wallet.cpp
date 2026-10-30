@@ -64,6 +64,7 @@
 #include <util/string.h>
 #include <util/time.h>
 #include <util/strencodings.h> // Qcoin: HexStr for wpq() import
+#include <hash.h> // Qcoin: Hash160 as ML-DSA key store id
 #include <util/translation.h>
 #include <wallet/coincontrol.h>
 #include <wallet/context.h>
@@ -3483,6 +3484,69 @@ void CWallet::SetupDescriptorScriptPubKeyMans(WalletBatch& batch, const CExtKey&
     }
 }
 
+util::Result<CTxDestination> CWallet::CreateMlDsaKeyAndImportWithDB(WalletBatch& batch, const std::string& label, bool make_default)
+{
+    AssertLockHeld(cs_wallet);
+    const auto scheme = qcoin::pqc::GetWalletSigScheme();
+    if (scheme == qcoin::pqc::SigScheme::ECDSA) {
+        return util::Error{Untranslated(strprintf("wallet signature scheme is ecdsa; start with -walletsigscheme=<%s>", qcoin::pqc::SigSchemeNames()))};
+    }
+    if (IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+        return util::Error{Untranslated("wallet has private keys disabled")};
+    }
+
+    // 1. Fresh ML-DSA keypair, stored in the development key store (UNENCRYPTED file
+    //    next to the wallet database), indexed by Hash160(pk).
+    qcoin::pqc::MlDsaKeyPair pq_keys;
+    if (!qcoin::pqc::MlDsaKeygen(scheme, pq_keys)) {
+        return util::Error{Untranslated(strprintf("%s keygen failed (liboqs parameter set unavailable?)", qcoin::pqc::SigSchemeName(scheme)))};
+    }
+    const std::vector<uint8_t> pk = pq_keys.pk;
+    const uint160 pk_id = Hash160(pk);
+    qcoin::pqc::KeyId id;
+    std::copy(pk_id.begin(), pk_id.end(), id.begin());
+    auto& store = qcoin::pqc::MlDsaKeyStore::Instance();
+    store.Add(id, std::move(pq_keys), make_default);
+    const fs::path key_file = fs::PathFromString(GetDatabase().Filename()).parent_path() / qcoin::pqc::MlDsaKeyStore::kFileName;
+    const bool saved = store.Save(fs::PathToString(key_file));
+    WalletLogPrintf("Qcoin: generated %s keypair (pk=%u bytes) id=%s; %s %s (%u key(s) in store)",
+                    qcoin::pqc::SigSchemeName(scheme), unsigned(pk.size()), pk_id.ToString(),
+                    saved ? "saved to" : "FAILED to save to", fs::PathToString(key_file), unsigned(store.Size()));
+    if (!saved) return util::Error{Untranslated("could not write " + fs::PathToString(key_file))};
+
+    // 2. Import wpq(<pk>) on the caller's batch (CreateFromMigration, not AddWalletDescriptor:
+    //    the latter opens a second WalletBatch and deadlocks on the SQLite write semaphore when
+    //    called inside RunWithinTxn during wallet creation).
+    FlatSigningProvider wpq_keys;
+    std::string wpq_err;
+    const std::string desc_str = strprintf("wpq(%s)", HexStr(pk));
+    auto descs = Parse(desc_str, wpq_keys, wpq_err, /*require_checksum=*/false);
+    if (descs.empty()) return util::Error{Untranslated("wpq() descriptor parse failed: " + wpq_err)};
+    WalletDescriptor w_desc(std::move(descs.at(0)), GetTime(), 0, 0, 0);
+    auto wpq_spkm = DescriptorScriptPubKeyMan::CreateFromMigration(*this, batch, w_desc, m_keypool_size, wpq_keys);
+    DescriptorScriptPubKeyMan* wpq_ptr = wpq_spkm.get();
+    AddScriptPubKeyMan(wpq_ptr->GetID(), std::move(wpq_spkm));
+
+    // 3. Label it and hand back the (single) destination.
+    std::optional<CTxDestination> result;
+    for (const auto& script : wpq_ptr->GetScriptPubKeys()) {
+        CTxDestination dest;
+        if (!ExtractDestination(script, dest)) continue;
+        SetAddressBookWithDB(batch, dest, label, AddressPurpose::RECEIVE);
+        if (!result) result = dest;
+    }
+    if (!result) return util::Error{Untranslated("wpq() descriptor produced no scriptPubKey")};
+    WalletLogPrintf("Qcoin: imported wpq() descriptor for %s key %s (label \"%s\")", qcoin::pqc::SigSchemeName(scheme), pk_id.ToString(), label);
+    return *result;
+}
+
+util::Result<CTxDestination> CWallet::GetNewMlDsaDestination(const std::string& label)
+{
+    AssertLockHeld(cs_wallet);
+    WalletBatch batch(GetDatabase());
+    return CreateMlDsaKeyAndImportWithDB(batch, label, /*make_default=*/false);
+}
+
 void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
 {
     AssertLockHeld(cs_wallet);
@@ -3496,56 +3560,12 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     CExtKey master_key;
     master_key.SetSeed(seed_key);
 
-    // Qcoin: ML-DSA keygen call site. The keypair is stored in the development
-    // MlDsaKeyStore under the HD seed key's ID, marked as the wallet's default
-    // ML-DSA key, and written UNENCRYPTED to mldsa_keys.dat next to the wallet
-    // database. No descriptor, DB record, or address type exists for it yet.
-    // See doc/WALLET-PQC.md.
-    if (const auto scheme = qcoin::pqc::GetWalletSigScheme(); scheme != qcoin::pqc::SigScheme::ECDSA) {
-        qcoin::pqc::MlDsaKeyPair pq_keys;
-        if (qcoin::pqc::MlDsaKeygen(scheme, pq_keys)) {
-            const CKeyID seed_id = seed.GetID();
-            qcoin::pqc::KeyId id;
-            std::copy(seed_id.begin(), seed_id.end(), id.begin());
-            const unsigned pk_len = pq_keys.pk.size(), sk_len = pq_keys.sk.size();
-            const std::vector<uint8_t> stored_pk = pq_keys.pk;
-            auto& store = qcoin::pqc::MlDsaKeyStore::Instance();
-            store.Add(id, std::move(pq_keys), /*make_default=*/true);
-            const fs::path key_file = fs::PathFromString(GetDatabase().Filename()).parent_path() / qcoin::pqc::MlDsaKeyStore::kFileName;
-            const bool saved = store.Save(fs::PathToString(key_file));
-            WalletLogPrintf("Qcoin: generated %s keypair (pk=%u bytes, sk=%u bytes) for seed %s; stored in memory, %s %s",
-                            qcoin::pqc::SigSchemeName(scheme), pk_len, sk_len, seed_id.ToString(),
-                            saved ? "saved to" : "FAILED to save to", fs::PathToString(key_file));
-
-            // Qcoin / Option B: import wpq(<pk>) so this wallet owns the witness v2 ML-DSA
-            // output OP_2 <Q>. The address is under label "mldsa" (getaddressesbylabel).
-            // Spending it requires a build with QCOIN_WITNESS_V2_EXPERIMENTAL=ON.
-            {
-                FlatSigningProvider wpq_keys;
-                std::string wpq_err;
-                const std::string desc_str = strprintf("wpq(%s)", HexStr(stored_pk));
-                auto descs = Parse(desc_str, wpq_keys, wpq_err, /*require_checksum=*/false);
-                if (descs.empty()) {
-                    WalletLogPrintf("Qcoin: wpq() descriptor parse failed: %s", wpq_err);
-                } else {
-                    WalletDescriptor w_desc(std::move(descs.at(0)), GetTime(), 0, 0, 0);
-                    // We are inside the wallet-creation DB transaction (RunWithinTxn). AddWalletDescriptor
-                    // would open a second WalletBatch and deadlock on the SQLite write semaphore, so
-                    // reuse `batch` the way wallet migration does.
-                    auto wpq_spkm = DescriptorScriptPubKeyMan::CreateFromMigration(*this, batch, w_desc, m_keypool_size, wpq_keys);
-                    DescriptorScriptPubKeyMan* wpq_ptr = wpq_spkm.get();
-                    AddScriptPubKeyMan(wpq_ptr->GetID(), std::move(wpq_spkm));
-                    unsigned labelled = 0;
-                    for (const auto& script : wpq_ptr->GetScriptPubKeys()) {
-                        CTxDestination dest;
-                        if (ExtractDestination(script, dest) && SetAddressBookWithDB(batch, dest, "mldsa", AddressPurpose::RECEIVE)) ++labelled;
-                    }
-                    WalletLogPrintf("Qcoin: imported wpq() descriptor for %s key (%u address(es) under label \"mldsa\")", qcoin::pqc::SigSchemeName(scheme), labelled);
-                }
-            }
-        } else {
-            LogWarning("Qcoin: %s keygen failed (liboqs parameter set unavailable?)", qcoin::pqc::SigSchemeName(scheme));
-        }
+    // Qcoin / Option B: with a non-ECDSA scheme, give the new wallet its first
+    // ML-DSA key and wpq() address (label "mldsa"). More can be generated with
+    // the getnewmldsaaddress RPC. See doc/WALLET-PQC.md.
+    if (qcoin::pqc::GetWalletSigScheme() != qcoin::pqc::SigScheme::ECDSA) {
+        auto res = CreateMlDsaKeyAndImportWithDB(batch, "mldsa", /*make_default=*/true);
+        if (!res) WalletLogPrintf("Qcoin: initial ML-DSA key setup failed: %s", util::ErrorString(res).original);
     }
 
     SetupDescriptorScriptPubKeyMans(batch, master_key);
