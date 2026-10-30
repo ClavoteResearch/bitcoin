@@ -2,8 +2,12 @@
 #include <pqc/pqc.h>
 
 #include <oqs/oqs.h>
+#include <crypto/hmac_sha512.h>
+#include <oqs/rand.h>
 
 #include <atomic>
+#include <cstring>
+#include <mutex>
 #include <memory>
 
 namespace qcoin::pqc {
@@ -11,6 +15,25 @@ namespace qcoin::pqc {
 namespace {
 
 std::atomic<SigScheme> g_wallet_sig_scheme{static_cast<SigScheme>(QCOIN_DEFAULT_SIG_SCHEME)};
+
+/** Serialises every liboqs call made by this module (see MlDsaKeygenFromSeed). */
+std::mutex g_oqs_mutex;
+
+// State for the temporary deterministic random source used by MlDsaKeygenFromSeed.
+const uint8_t* g_seed_ptr{nullptr};
+bool g_seed_served{false};
+bool g_seed_unexpected{false};
+void SeededRandombytes(uint8_t* buf, size_t n)
+{
+    if (!g_seed_served && g_seed_ptr && n == MLDSA_SEED_LEN) {
+        std::memcpy(buf, g_seed_ptr, n);
+        g_seed_served = true;
+        return;
+    }
+    // Any other request means the algorithm is not the single-seed keygen we expect.
+    g_seed_unexpected = true;
+    std::memset(buf, 0, n);
+}
 
 const char* OqsAlgName(SigScheme scheme)
 {
@@ -91,6 +114,7 @@ size_t MlDsaSigLen(SigScheme scheme)
 
 bool MlDsaKeygen(SigScheme scheme, MlDsaKeyPair& out)
 {
+    std::lock_guard<std::mutex> l(g_oqs_mutex);
     OqsSigPtr sig = NewSig(scheme);
     if (!sig) return false;
     out.scheme = scheme;
@@ -112,6 +136,7 @@ void WipeSecret(SecureBytes& secret)
 
 bool MlDsaSign(SigScheme scheme, std::span<const uint8_t> sk, std::span<const uint8_t> msg, std::vector<uint8_t>& sig_out)
 {
+    std::lock_guard<std::mutex> l(g_oqs_mutex);
     OqsSigPtr sig = NewSig(scheme);
     if (!sig) return false;
     if (sk.size() != sig->length_secret_key) return false;
@@ -145,6 +170,7 @@ uint8_t ParamIdFor(SigScheme scheme)
 
 bool MlDsaSignCtx(SigScheme scheme, std::span<const uint8_t> sk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::vector<uint8_t>& sig_out)
 {
+    std::lock_guard<std::mutex> l(g_oqs_mutex);
     OqsSigPtr sig = NewSig(scheme);
     if (!sig || !sig->sig_with_ctx_support) return false;
     if (sk.size() != sig->length_secret_key) return false;
@@ -164,6 +190,53 @@ bool MlDsaVerifyCtx(SigScheme scheme, std::span<const uint8_t> pk, std::span<con
     if (!sig || !sig->sig_with_ctx_support) return false;
     if (pk.size() != sig->length_public_key || sig_in.size() != sig->length_signature) return false;
     return OQS_SIG_verify_with_ctx_str(sig.get(), msg.data(), msg.size(), sig_in.data(), sig_in.size(), ctx.data(), ctx.size(), pk.data()) == OQS_SUCCESS;
+}
+
+bool MlDsaKeygenFromSeed(SigScheme scheme, std::span<const uint8_t> seed, MlDsaKeyPair& out)
+{
+    if (seed.size() != MLDSA_SEED_LEN) return false;
+    std::lock_guard<std::mutex> l(g_oqs_mutex);
+    OqsSigPtr sig = NewSig(scheme);
+    if (!sig) return false;
+    out.scheme = scheme;
+    out.pk.assign(sig->length_public_key, 0);
+    out.sk.assign(sig->length_secret_key, 0);
+
+    g_seed_ptr = seed.data();
+    g_seed_served = false;
+    g_seed_unexpected = false;
+    OQS_randombytes_custom_algorithm(&SeededRandombytes);
+    const OQS_STATUS rc = OQS_SIG_keypair(sig.get(), out.pk.data(), out.sk.data());
+    // Restore the system RNG before anything else can run.
+    (void)OQS_randombytes_switch_algorithm(OQS_RAND_alg_system);
+    g_seed_ptr = nullptr;
+    const bool ok = rc == OQS_SUCCESS && g_seed_served && !g_seed_unexpected;
+    if (!ok) {
+        out.pk.clear();
+        WipeSecret(out.sk);
+    }
+    return ok;
+}
+
+SecureBytes DeriveMlDsaMaster(std::span<const uint8_t> root_privkey)
+{
+    static const char tag[] = "Qcoin/MLDSAv2/master";
+    unsigned char out[CHMAC_SHA512::OUTPUT_SIZE];
+    CHMAC_SHA512(reinterpret_cast<const unsigned char*>(tag), sizeof(tag) - 1).Write(root_privkey.data(), root_privkey.size()).Finalize(out);
+    SecureBytes master(out, out + MLDSA_SEED_LEN);
+    OQS_MEM_cleanse(out, sizeof(out));
+    return master;
+}
+
+SecureBytes DeriveMlDsaChildSeed(const SecureBytes& master, uint32_t index)
+{
+    static const char tag[] = "MLDSAv2/child";
+    const uint8_t idx[4] = {uint8_t(index), uint8_t(index >> 8), uint8_t(index >> 16), uint8_t(index >> 24)};
+    unsigned char out[CHMAC_SHA512::OUTPUT_SIZE];
+    CHMAC_SHA512(master.data(), master.size()).Write(reinterpret_cast<const unsigned char*>(tag), sizeof(tag) - 1).Write(idx, 4).Finalize(out);
+    SecureBytes seed(out, out + MLDSA_SEED_LEN);
+    OQS_MEM_cleanse(out, sizeof(out));
+    return seed;
 }
 
 } // namespace qcoin::pqc

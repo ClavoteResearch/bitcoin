@@ -51,10 +51,47 @@ Nothing short of outputs that commit to an ML-DSA public key can make this pass.
   database loader deserialises into it, and the signer calls `WipeSecret` as soon
   as liboqs has produced the signature. What liboqs does with its own internal
   copies during signing is up to liboqs (it cleanses them).
-- There is no HD derivation: every `getnewmldsaaddress` call stores an
-  independent keypair (about 3.9 KB for ML-DSA-44).
+- Keys are HD-derived from the wallet root (see "HD derivation"); each is still
+  stored with its descriptor (about 3.9 KB for ML-DSA-44) plus its index.
 - No RPC exposes the keys; `listdescriptors true` cannot print a private form
   of `wpq()`.
+
+## HD derivation
+
+`getnewmldsaaddress` no longer generates independent keypairs. Every ML-DSA key
+is derived from the wallet's existing BIP32 root:
+
+```
+master     = HMAC-SHA512(key = "Qcoin/MLDSAv2/master", data = root_xprv_privkey)[0:32]
+seed_i     = HMAC-SHA512(key = master, data = "MLDSAv2/child" || i_le32)[0:32]
+(pk_i, sk_i) = FIPS 204 KeyGen_internal(seed_i)        # ML-DSA-44 (0x01) or, experimentally, ML-DSA-87
+Q_i        = tagged_hash("MLDSAv2/Commit", param_id || SHA256(pk_i))
+```
+
+- The root private key is the one an active HD descriptor already stores, so
+  the ML-DSA master needs no new secret record and inherits wallet encryption
+  and unlock semantics automatically (`DescriptorScriptPubKeyMan::GetMlDsaMasterSecret`,
+  `CWallet::GetMlDsaMasterSecret`).
+- Seeded key generation goes through liboqs's public API by temporarily
+  installing a deterministic random source (`MlDsaKeygenFromSeed`): ML-DSA
+  keygen draws exactly one 32-byte value, which is the FIPS 204 seed. All liboqs
+  calls in `fork/src/pqc` are serialised by one mutex so no other ML-DSA
+  operation can observe the temporary source, and the system RNG is restored
+  immediately. If liboqs ever asks for anything but one 32-byte draw the
+  derivation fails closed.
+- The derived key is still stored with its descriptor (plaintext or encrypted
+  record) together with its index (`walletdescriptormldsahd`), so signing is
+  unchanged and `getmldsahdinfo` can list indices. `derivemldsaaddress <index>`
+  re-derives without storing, which is how the regtest proves every stored
+  address is reproducible from the master. `NextMlDsaHdIndex` is max stored
+  index + 1.
+- Caveats: this is a single-level, non-hardened-style derivation with no chain
+  code and no BIP32 path, chosen for minimality; a real proposal should pick a
+  purpose/coin/account path and a published seed-expansion rule. `encryptwallet`
+  re-runs descriptor setup with a fresh root, so keys created after encryption
+  derive from the new root while earlier ones remain stored and spendable but
+  are not reproducible from it. Keys created before this commit have no index
+  and are listed without one.
 
 ## The decision to make first: interpreter routing vs. witness v2
 
@@ -130,10 +167,9 @@ What exists:
   non-ranged descriptor with a label. Wallet creation with a non-ECDSA scheme
   calls it once (label `mldsa`, marked as the store's default key). The
   `getnewmldsaaddress [label]` RPC calls it again on demand, so each call yields
-  a new key and a new `bcrt1z` address with no manual descriptor import. There
-  is no derivation: every address is an independent keypair stored as a
-  `walletdescriptormldsakey` record in the wallet database, so a wallet backup
-  covers it. `getnewaddress`/`-addresstype` still cannot
+  a new key and a new `bcrt1z` address with no manual descriptor import. Keys
+  are HD-derived from the wallet root (see "HD derivation") and stored as
+  `walletdescriptormldsakey` records plus an index, so a wallet backup covers them. `getnewaddress`/`-addresstype` still cannot
   produce v2 addresses, since that needs the dedicated `OutputType`.
 - **Signing.** `BaseSignatureCreator::CreateMlDsaAttestation` builds the
   one-entry attestation. `ProduceSignature` routes any 32-byte witness v2

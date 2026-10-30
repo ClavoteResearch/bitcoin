@@ -1354,6 +1354,37 @@ void DescriptorScriptPubKeyMan::LoadMlDsaKey(const uint256& pk_hash, qcoin::pqc:
     m_map_mldsa_keys[pk_hash] = std::move(key);
 }
 
+bool DescriptorScriptPubKeyMan::SetMlDsaHdIndexWithDB(WalletBatch& batch, uint32_t index)
+{
+    LOCK(cs_desc_man);
+    if (!batch.WriteDescriptorMlDsaHdIndex(GetID(), index)) return false;
+    m_mldsa_hd_index = index;
+    return true;
+}
+
+void DescriptorScriptPubKeyMan::LoadMlDsaHdIndex(uint32_t index)
+{
+    LOCK(cs_desc_man);
+    m_mldsa_hd_index = index;
+}
+
+std::optional<uint32_t> DescriptorScriptPubKeyMan::GetMlDsaHdIndex() const
+{
+    LOCK(cs_desc_man);
+    return m_mldsa_hd_index;
+}
+
+bool DescriptorScriptPubKeyMan::GetMlDsaMasterSecret(qcoin::pqc::SecureBytes& master) const
+{
+    LOCK(cs_desc_man);
+    if (m_storage.HasEncryptionKeys() && m_storage.IsLocked()) return false;
+    const KeyMap keys = GetKeys();
+    if (keys.empty()) return false;
+    const CKey& root = keys.begin()->second; // an active HD descriptor stores exactly its root xprv key
+    master = qcoin::pqc::DeriveMlDsaMaster(std::span<const uint8_t>(UCharCast(root.begin()), root.size()));
+    return true;
+}
+
 size_t DescriptorScriptPubKeyMan::MlDsaKeyCount() const
 {
     LOCK(cs_desc_man);

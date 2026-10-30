@@ -160,6 +160,21 @@ int main()
         Check(!ok && err == SCRIPT_ERR_MLDSA_SIG, "signature without ctx BIP-MLDSAv2 -> SCRIPT_ERR_MLDSA_SIG");
     }
 
+    // 8. Seeded keygen is deterministic and seed-sensitive
+    {
+        qcoin::pqc::SecureBytes master(32, 0x42);
+        qcoin::pqc::SecureBytes s0 = qcoin::pqc::DeriveMlDsaChildSeed(master, 0);
+        qcoin::pqc::SecureBytes s1 = qcoin::pqc::DeriveMlDsaChildSeed(master, 1);
+        qcoin::pqc::MlDsaKeyPair a, b, c;
+        const bool ok = qcoin::pqc::MlDsaKeygenFromSeed(qcoin::pqc::SigScheme::MLDSA44, s0, a) &&
+                        qcoin::pqc::MlDsaKeygenFromSeed(qcoin::pqc::SigScheme::MLDSA44, s0, b) &&
+                        qcoin::pqc::MlDsaKeygenFromSeed(qcoin::pqc::SigScheme::MLDSA44, s1, c);
+        Check(ok && a.pk == b.pk && a.sk == b.sk, "seeded keygen: same seed -> same keypair");
+        Check(ok && a.pk != c.pk, "seeded keygen: different index -> different key");
+        qcoin::pqc::MlDsaKeyPair r;
+        Check(qcoin::pqc::MlDsaKeygen(qcoin::pqc::SigScheme::MLDSA44, r) && r.pk != a.pk, "random keygen still works after seeded keygen (system RNG restored)");
+    }
+
     std::printf("%s (%d failure%s)\n", g_failures ? "SELFTEST FAILED" : "SELFTEST OK", g_failures, g_failures == 1 ? "" : "s");
     return g_failures ? 1 : 0;
 }

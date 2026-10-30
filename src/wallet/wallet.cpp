@@ -65,6 +65,7 @@
 #include <util/time.h>
 #include <util/strencodings.h> // Qcoin: HexStr for wpq() import
 #include <crypto/sha256.h> // Qcoin: SHA256(pk) id for ML-DSA keys
+#include "../../fork/src/script/witness_v2.h" // Qcoin / Option B: commitment for derived addresses
 #include <util/translation.h>
 #include <wallet/coincontrol.h>
 #include <wallet/context.h>
@@ -3471,7 +3472,7 @@ void CWallet::SetupDescriptorScriptPubKeyMans(WalletBatch& batch, const CExtKey&
     }
 }
 
-util::Result<CTxDestination> CWallet::CreateMlDsaKeyAndImportWithDB(WalletBatch& batch, const std::string& label)
+util::Result<CTxDestination> CWallet::CreateMlDsaKeyAndImportWithDB(WalletBatch& batch, const std::string& label, const qcoin::pqc::SecureBytes& master)
 {
     AssertLockHeld(cs_wallet);
     const auto scheme = qcoin::pqc::GetWalletSigScheme();
@@ -3485,11 +3486,15 @@ util::Result<CTxDestination> CWallet::CreateMlDsaKeyAndImportWithDB(WalletBatch&
         return util::Error{Untranslated("wallet is locked; unlock it with walletpassphrase first")};
     }
 
-    // 1. Fresh ML-DSA keypair. It is written to the wallet database below as a
-    //    walletdescriptormldsakey record (plaintext), scoped to this wallet.
+    // 1. HD-derived ML-DSA keypair: seed = HMAC(master, index), key = FIPS 204 KeyGen(seed).
+    //    Stored with its descriptor (plaintext or encrypted record) plus the index.
+    const uint32_t index = NextMlDsaHdIndex();
     qcoin::pqc::MlDsaKeyPair pq_keys;
-    if (!qcoin::pqc::MlDsaKeygen(scheme, pq_keys)) {
-        return util::Error{Untranslated(strprintf("%s keygen failed (liboqs parameter set unavailable?)", qcoin::pqc::SigSchemeName(scheme)))};
+    {
+        qcoin::pqc::SecureBytes seed = qcoin::pqc::DeriveMlDsaChildSeed(master, index);
+        const bool ok = qcoin::pqc::MlDsaKeygenFromSeed(scheme, seed, pq_keys);
+        qcoin::pqc::WipeSecret(seed);
+        if (!ok) return util::Error{Untranslated(strprintf("%s seeded keygen failed at index %u", qcoin::pqc::SigSchemeName(scheme), index))};
     }
     const std::vector<uint8_t> pk = pq_keys.pk;
     uint256 pk_hash;
@@ -3512,8 +3517,12 @@ util::Result<CTxDestination> CWallet::CreateMlDsaKeyAndImportWithDB(WalletBatch&
     if (!wpq_ptr->AddMlDsaKeyWithDB(batch, pk_hash, pq_keys)) {
         return util::Error{Untranslated("could not write ML-DSA key to the wallet database")};
     }
-    WalletLogPrintf("Qcoin: generated %s keypair (pk=%u bytes) pk_hash=%s; stored in wallet database for descriptor %s",
-                    qcoin::pqc::SigSchemeName(scheme), unsigned(pk.size()), pk_hash.ToString().substr(0, 16), wpq_ptr->GetID().ToString().substr(0, 16));
+    qcoin::pqc::WipeSecret(pq_keys.sk);
+    if (!wpq_ptr->SetMlDsaHdIndexWithDB(batch, index)) {
+        return util::Error{Untranslated("could not write ML-DSA HD index to the wallet database")};
+    }
+    WalletLogPrintf("Qcoin: derived %s keypair at HD index %u (pk=%u bytes) pk_hash=%s; stored in wallet database for descriptor %s",
+                    qcoin::pqc::SigSchemeName(scheme), index, unsigned(pk.size()), pk_hash.ToString().substr(0, 16), wpq_ptr->GetID().ToString().substr(0, 16));
 
     // 4. Label it and hand back the (single) destination.
     std::optional<CTxDestination> result;
@@ -3531,8 +3540,62 @@ util::Result<CTxDestination> CWallet::CreateMlDsaKeyAndImportWithDB(WalletBatch&
 util::Result<CTxDestination> CWallet::GetNewMlDsaDestination(const std::string& label)
 {
     AssertLockHeld(cs_wallet);
+    auto master = GetMlDsaMasterSecret();
+    if (!master) return util::Error{util::ErrorString(master)};
     WalletBatch batch(GetDatabase());
-    return CreateMlDsaKeyAndImportWithDB(batch, label);
+    auto res = CreateMlDsaKeyAndImportWithDB(batch, label, *master);
+    qcoin::pqc::WipeSecret(*master);
+    return res;
+}
+
+util::Result<qcoin::pqc::SecureBytes> CWallet::GetMlDsaMasterSecret() const
+{
+    AssertLockHeld(cs_wallet);
+    if (IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) return util::Error{Untranslated("wallet has private keys disabled")};
+    if (HasEncryptionKeys() && IsLocked()) return util::Error{Untranslated("wallet is locked; unlock it with walletpassphrase first")};
+    // Prefer the active external descriptor of the default address type, else any active one.
+    std::vector<ScriptPubKeyMan*> candidates;
+    if (auto* spkm = GetScriptPubKeyMan(m_default_address_type, /*internal=*/false)) candidates.push_back(spkm);
+    for (auto* spkm : GetActiveScriptPubKeyMans()) candidates.push_back(spkm);
+    for (auto* spkm : candidates) {
+        auto* desc_spkm = dynamic_cast<DescriptorScriptPubKeyMan*>(spkm);
+        if (!desc_spkm) continue;
+        qcoin::pqc::SecureBytes master;
+        if (desc_spkm->GetMlDsaMasterSecret(master)) return master;
+    }
+    return util::Error{Untranslated("no active HD descriptor with a private root key to derive the ML-DSA master from")};
+}
+
+uint32_t CWallet::NextMlDsaHdIndex() const
+{
+    AssertLockHeld(cs_wallet);
+    std::optional<uint32_t> max_index;
+    for (auto* spkm : GetAllScriptPubKeyMans()) {
+        auto* desc_spkm = dynamic_cast<DescriptorScriptPubKeyMan*>(spkm);
+        if (!desc_spkm) continue;
+        if (const auto idx = desc_spkm->GetMlDsaHdIndex(); idx && (!max_index || *idx > *max_index)) max_index = *idx;
+    }
+    return max_index ? *max_index + 1 : 0;
+}
+
+util::Result<std::pair<CTxDestination, uint256>> CWallet::DeriveMlDsaDestination(uint32_t index) const
+{
+    AssertLockHeld(cs_wallet);
+    const auto scheme = qcoin::pqc::GetWalletSigScheme();
+    if (scheme == qcoin::pqc::SigScheme::ECDSA) return util::Error{Untranslated("wallet signature scheme is ecdsa")};
+    auto master = GetMlDsaMasterSecret();
+    if (!master) return util::Error{util::ErrorString(master)};
+    qcoin::pqc::SecureBytes seed = qcoin::pqc::DeriveMlDsaChildSeed(*master, index);
+    qcoin::pqc::WipeSecret(*master);
+    qcoin::pqc::MlDsaKeyPair kp;
+    const bool ok = qcoin::pqc::MlDsaKeygenFromSeed(scheme, seed, kp);
+    qcoin::pqc::WipeSecret(seed);
+    if (!ok) return util::Error{Untranslated("seeded keygen failed")};
+    qcoin::pqc::WipeSecret(kp.sk);
+    const uint8_t param_id = qcoin::pqc::ParamIdFor(scheme);
+    const uint256 pk_hash = qcoin::v2::PubKeyHash(kp.pk);
+    const uint256 q = qcoin::v2::ComputeCommitment(param_id, pk_hash, {});
+    return std::make_pair(CTxDestination{WitnessUnknown{qcoin::v2::WITNESS_V2_VERSION, std::vector<unsigned char>(q.begin(), q.end())}}, pk_hash);
 }
 
 void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
@@ -3552,7 +3615,10 @@ void CWallet::SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch)
     // ML-DSA key and wpq() address (label "mldsa"). More can be generated with
     // the getnewmldsaaddress RPC. See doc/WALLET-PQC.md.
     if (qcoin::pqc::GetWalletSigScheme() != qcoin::pqc::SigScheme::ECDSA) {
-        auto res = CreateMlDsaKeyAndImportWithDB(batch, "mldsa");
+        // Same derivation GetMlDsaMasterSecret() will use later from the stored root key.
+        qcoin::pqc::SecureBytes master = qcoin::pqc::DeriveMlDsaMaster(std::span<const uint8_t>(UCharCast(master_key.key.begin()), master_key.key.size()));
+        auto res = CreateMlDsaKeyAndImportWithDB(batch, "mldsa", master);
+        qcoin::pqc::WipeSecret(master);
         if (!res) WalletLogPrintf("Qcoin: initial ML-DSA key setup failed: %s", util::ErrorString(res).original);
     }
 

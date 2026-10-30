@@ -776,6 +776,12 @@ public:
      * descriptor under `label`, and return its witness v2 destination.
      */
     util::Result<CTxDestination> GetNewMlDsaDestination(const std::string& label) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    /** Qcoin / Option B: ML-DSA master secret derived from the active HD descriptor's root key (needs an unlocked wallet). */
+    util::Result<qcoin::pqc::SecureBytes> GetMlDsaMasterSecret() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    /** Qcoin / Option B: next unused ML-DSA HD index (max stored index + 1). */
+    uint32_t NextMlDsaHdIndex() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    /** Qcoin / Option B: derive (without storing) the witness v2 destination at an HD index; returns dest and SHA256(pk). */
+    util::Result<std::pair<CTxDestination, uint256>> DeriveMlDsaDestination(uint32_t index) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     util::Result<CTxDestination> GetNewChangeDestination(OutputType type);
 
     bool IsMine(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
@@ -1028,7 +1034,7 @@ public:
     //! Create new seed and default DescriptorScriptPubKeyMans for this wallet
     void SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     /** Qcoin / Option B: keygen + wpq() import + DB key record on an existing batch (safe inside RunWithinTxn). */
-    util::Result<CTxDestination> CreateMlDsaKeyAndImportWithDB(WalletBatch& batch, const std::string& label) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    util::Result<CTxDestination> CreateMlDsaKeyAndImportWithDB(WalletBatch& batch, const std::string& label, const qcoin::pqc::SecureBytes& master) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Setup new descriptors or seed for new address generation
     void SetupWalletGeneration() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);

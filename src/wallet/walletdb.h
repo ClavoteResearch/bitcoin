@@ -90,6 +90,7 @@ extern const std::string WALLETDESCRIPTORCKEY;
 extern const std::string WALLETDESCRIPTORKEY;
 extern const std::string WALLETDESCRIPTORMLDSAKEY; // Qcoin / Option B
 extern const std::string WALLETDESCRIPTORMLDSACKEY; // Qcoin / Option B (encrypted)
+extern const std::string WALLETDESCRIPTORMLDSAHD; // Qcoin / Option B (HD index)
 extern const std::string WATCHMETA;
 extern const std::string WATCHS;
 
@@ -262,6 +263,8 @@ public:
     //! Qcoin / Option B: plaintext ML-DSA keypair for a wpq() descriptor, keyed by (desc_id, SHA256(pk)).
     bool WriteDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const qcoin::pqc::SecureBytes& sk);
     //! Qcoin / Option B: encrypted ML-DSA secret (AES-256-CBC under the wallet master key, IV = pk_hash); erases the plaintext record.
+    //! Qcoin / Option B: HD derivation index of the ML-DSA key behind a wpq() descriptor (public metadata).
+    bool WriteDescriptorMlDsaHdIndex(const uint256& desc_id, uint32_t index);
     bool WriteCryptedDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const std::vector<unsigned char>& crypted_sk);
     bool WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor);
     bool WriteDescriptorDerivedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index, uint32_t der_index);

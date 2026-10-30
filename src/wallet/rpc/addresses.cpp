@@ -104,6 +104,84 @@ RPCMethod getnewmldsaaddress()
     };
 }
 
+RPCMethod getmldsahdinfo()
+{
+    return RPCMethod{
+        "getmldsahdinfo",
+        "Qcoin experimental: ML-DSA HD derivation state of this wallet.\n"
+        "Keys are derived as seed = HMAC-SHA512(master, \"MLDSAv2/child\" || index), key = FIPS 204 KeyGen(seed),\n"
+        "where master = HMAC-SHA512(\"Qcoin/MLDSAv2/master\", BIP32 root private key of the active descriptor).\n",
+        {},
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::NUM, "next_index", "Index the next getnewmldsaaddress will use"},
+            {RPCResult::Type::ARR, "keys", "Stored wpq() descriptors", {{RPCResult::Type::OBJ, "", "", {
+                {RPCResult::Type::NUM, "index", /*optional=*/true, "HD index (absent for keys generated at random)"},
+                {RPCResult::Type::STR, "address", "Witness v2 address"},
+                {RPCResult::Type::STR_HEX, "descriptor_id", "Descriptor id"},
+                {RPCResult::Type::NUM, "stored_keys", "ML-DSA secrets stored for this descriptor"},
+            }}}},
+        }},
+        RPCExamples{HelpExampleCli("getmldsahdinfo", "")},
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    LOCK(pwallet->cs_wallet);
+    UniValue ret(UniValue::VOBJ);
+    ret.pushKV("next_index", (uint64_t)pwallet->NextMlDsaHdIndex());
+    UniValue keys(UniValue::VARR);
+    for (auto* spkm : pwallet->GetAllScriptPubKeyMans()) {
+        auto* desc_spkm = dynamic_cast<DescriptorScriptPubKeyMan*>(spkm);
+        if (!desc_spkm || desc_spkm->MlDsaKeyCount() == 0) continue;
+        UniValue k(UniValue::VOBJ);
+        if (const auto idx = desc_spkm->GetMlDsaHdIndex()) k.pushKV("index", (uint64_t)*idx);
+        for (const auto& script : desc_spkm->GetScriptPubKeys()) {
+            CTxDestination dest;
+            if (ExtractDestination(script, dest)) { k.pushKV("address", EncodeDestination(dest)); break; }
+        }
+        k.pushKV("descriptor_id", desc_spkm->GetID().ToString());
+        k.pushKV("stored_keys", (uint64_t)desc_spkm->MlDsaKeyCount());
+        keys.push_back(std::move(k));
+    }
+    ret.pushKV("keys", std::move(keys));
+    return ret;
+},
+    };
+}
+
+RPCMethod derivemldsaaddress()
+{
+    return RPCMethod{
+        "derivemldsaaddress",
+        "Qcoin experimental: derive (without storing) the witness v2 ML-DSA address at an HD index from this wallet's master.\n"
+        "Useful to check that stored keys are reproducible from the wallet seed. Requires an unlocked wallet.\n",
+        {
+            {"index", RPCArg::Type::NUM, RPCArg::Optional::NO, "The HD index."},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "", {
+            {RPCResult::Type::NUM, "index", "The HD index"},
+            {RPCResult::Type::STR, "address", "Witness v2 address at that index"},
+            {RPCResult::Type::STR_HEX, "pk_hash", "SHA256 of the ML-DSA public key"},
+        }},
+        RPCExamples{HelpExampleCli("derivemldsaaddress", "0")},
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    LOCK(pwallet->cs_wallet);
+    const int64_t idx = request.params[0].getInt<int64_t>();
+    if (idx < 0 || idx > 0xFFFFFFFFLL) throw JSONRPCError(RPC_INVALID_PARAMETER, "index out of range");
+    auto res = pwallet->DeriveMlDsaDestination(static_cast<uint32_t>(idx));
+    if (!res) throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(res).original);
+    UniValue ret(UniValue::VOBJ);
+    ret.pushKV("index", idx);
+    ret.pushKV("address", EncodeDestination(res->first));
+    ret.pushKV("pk_hash", res->second.ToString());
+    return ret;
+},
+    };
+}
+
 RPCMethod getrawchangeaddress()
 {
     return RPCMethod{

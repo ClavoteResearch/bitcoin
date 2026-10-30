@@ -63,6 +63,24 @@ struct MlDsaKeyPair {
 /** Zero and release a secret immediately (does not wait for destruction). */
 void WipeSecret(SecureBytes& secret);
 
+// ---- HD derivation -------------------------------------------------------
+// FIPS 204 KeyGen is deterministic in its 32-byte seed xi. liboqs exposes no seeded
+// keygen, but it lets a caller install a custom random source; ML-DSA keygen draws
+// exactly one 32-byte random value, so serving the seed there yields
+// KeyGen_internal(xi) through the public API. All liboqs calls in this module are
+// serialised by a mutex so the temporary random source can never be observed by
+// another ML-DSA operation.
+inline constexpr size_t MLDSA_SEED_LEN = 32;
+
+/** Deterministic keypair from a 32-byte seed. Fails if liboqs requested anything but one 32-byte draw. */
+bool MlDsaKeygenFromSeed(SigScheme scheme, std::span<const uint8_t> seed, MlDsaKeyPair& out);
+
+/** ML-DSA master secret from the wallet's BIP32 root private key: HMAC-SHA512("Qcoin/MLDSAv2/master", root)[0:32]. */
+SecureBytes DeriveMlDsaMaster(std::span<const uint8_t> root_privkey);
+
+/** Child seed: HMAC-SHA512(master, "MLDSAv2/child" || index_le32)[0:32]. Non-hardened-style single level; no chain code. */
+SecureBytes DeriveMlDsaChildSeed(const SecureBytes& master, uint32_t index);
+
 /**
  * Generate a fresh ML-DSA keypair with liboqs.
  * Returns false for SigScheme::ECDSA or if liboqs lacks the parameter set.

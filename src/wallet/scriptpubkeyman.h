@@ -292,6 +292,8 @@ private:
         std::vector<unsigned char> crypted_sk;
     };
     std::map<uint256, CryptedMlDsaKey> m_map_crypted_mldsa_keys GUARDED_BY(cs_desc_man);
+    //! Qcoin / Option B: HD index this wpq() key was derived at (nullopt for keys generated at random).
+    std::optional<uint32_t> m_mldsa_hd_index GUARDED_BY(cs_desc_man);
     //! Decrypted (when encrypted and unlocked) or plaintext ML-DSA keys for signing.
     std::map<uint256, qcoin::pqc::MlDsaKeyPair> GetMlDsaKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
@@ -385,6 +387,16 @@ public:
     void LoadMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair key);
     void LoadCryptedMlDsaKey(const uint256& pk_hash, uint8_t scheme, std::vector<unsigned char> pk, std::vector<unsigned char> crypted_sk);
     size_t MlDsaKeyCount() const;
+    //! Qcoin / Option B: HD index bookkeeping for wpq() descriptors.
+    bool SetMlDsaHdIndexWithDB(WalletBatch& batch, uint32_t index);
+    void LoadMlDsaHdIndex(uint32_t index);
+    std::optional<uint32_t> GetMlDsaHdIndex() const;
+    /**
+     * Qcoin / Option B: ML-DSA master secret derived from this descriptor's stored BIP32
+     * root private key (the single key an active HD descriptor holds). Fails when the
+     * descriptor has no private keys or the wallet is locked.
+     */
+    bool GetMlDsaMasterSecret(qcoin::pqc::SecureBytes& master) const;
     bool HasPrivKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     //! Retrieve the particular key if it is available. Returns nullopt if the key is not in the wallet, or if the wallet is locked.
     std::optional<CKey> GetKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);

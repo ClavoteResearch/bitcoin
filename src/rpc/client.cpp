@@ -73,6 +73,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getnetworkhashps", 1, "height" },
     { "sendtoaddress", 0, "address", ParamFormat::STRING },
     { "sendtoaddress", 1, "amount" },
+    { "derivemldsaaddress", 0, "index" }, // Qcoin / Option B
     { "sendtoaddress", 2, "comment", ParamFormat::STRING },
     { "sendtoaddress", 3, "comment_to", ParamFormat::STRING },
     { "sendtoaddress", 4, "subtractfeefromamount" },
