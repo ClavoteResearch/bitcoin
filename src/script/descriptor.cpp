@@ -23,7 +23,6 @@
 #include <script/signingprovider.h>
 #include <script/solver.h>
 #include "../../fork/src/script/witness_v2.h" // Qcoin / Option B: wpq() descriptor
-#include <pqc/pqc.h> // Qcoin: MlDsaKeyStore for inferring wpq() from OP_2 <Q>
 #include <serialize.h>
 #include <tinyformat.h>
 #include <uint256.h>
@@ -1237,8 +1236,8 @@ public:
  * HEXPK is the FIPS 204 public key encoding (1312 bytes for ML-DSA-44). The output is
  * OP_2 <Q> with Q = tagged_hash("MLDSAv2/Commit", param_id || SHA256(pk) || <empty>),
  * i.e. a key-path-only witness v2 ML-DSA output. There is no PubkeyProvider: the
- * key is literal, and the secret key is resolved at signing time from the
- * development MlDsaKeyStore (see fork/src/pqc/pqc.h, doc/WALLET-PQC.md).
+ * key is literal; the secret key is supplied by the SigningProvider
+ * (SigningProvider::GetMlDsaKey, backed by the wallet database).
  */
 class WpqDescriptor final : public DescriptorImpl
 {
@@ -1246,10 +1245,12 @@ class WpqDescriptor final : public DescriptorImpl
     const std::vector<unsigned char> m_pubkey;
 protected:
     std::string ToStringExtra() const override { return HexStr(m_pubkey); }
-    std::vector<CScript> MakeScripts(const std::vector<CPubKey>&, std::span<const CScript>, FlatSigningProvider&) const override
+    std::vector<CScript> MakeScripts(const std::vector<CPubKey>&, std::span<const CScript>, FlatSigningProvider& out) const override
     {
         const uint256 q = qcoin::v2::ComputeCommitment(m_param_id, qcoin::v2::PubKeyHash(m_pubkey), {});
-        return Vector(CScript() << OP_2 << std::vector<unsigned char>(q.begin(), q.end()));
+        const std::vector<unsigned char> program(q.begin(), q.end());
+        out.mldsa_pubkeys[program] = m_pubkey; // lets InferDescriptor and the signer map Q back to the key
+        return Vector(CScript() << OP_2 << program);
     }
 public:
     WpqDescriptor(uint8_t param_id, std::vector<unsigned char> pubkey) : DescriptorImpl({}, "wpq"), m_param_id(param_id), m_pubkey(std::move(pubkey)) {}
@@ -2913,18 +2914,16 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
     std::vector<std::vector<unsigned char>> data;
     TxoutType txntype = Solver(script, data);
 
-    // Qcoin / Option B: OP_2 <Q> infers to wpq(pk) when a stored ML-DSA key commits to Q.
-    // The wallet sizes inputs via InferDescriptor + MaxSatisfactionWeight, so without
-    // this the v2 coin is unsolvable and cannot be selected. Stopgap until the
-    // SigningProvider carries ML-DSA keys.
+    // Qcoin / Option B: OP_2 <Q> infers to wpq(pk) when the provider knows the ML-DSA
+    // public key behind Q (registered by WpqDescriptor::MakeScripts). The wallet sizes
+    // inputs via InferDescriptor + MaxSatisfactionWeight, so this is what makes a v2
+    // coin solvable and selectable.
     if (ctx == ParseScriptContext::TOP && txntype == TxoutType::WITNESS_UNKNOWN && data.size() == 2 &&
         data[0].size() == 1 && data[0][0] == qcoin::v2::WITNESS_V2_VERSION && data[1].size() == qcoin::v2::WITNESS_V2_PROGRAM_SIZE) {
-        for (auto& kp : qcoin::pqc::MlDsaKeyStore::Instance().All()) {
-            const uint8_t param_id = qcoin::pqc::ParamIdFor(kp.scheme);
-            if (!qcoin::v2::SizesFor(param_id)) continue;
-            const uint256 q = qcoin::v2::ComputeCommitment(param_id, qcoin::v2::PubKeyHash(kp.pk), {});
-            if (std::equal(q.begin(), q.end(), data[1].begin())) {
-                return std::make_unique<WpqDescriptor>(param_id, std::vector<unsigned char>(kp.pk.begin(), kp.pk.end()));
+        std::vector<unsigned char> pk;
+        if (provider.GetMlDsaPubKey(data[1], pk)) {
+            if (const auto param_id = qcoin::v2::ParamIdForPubKeyLen(pk.size())) {
+                return std::make_unique<WpqDescriptor>(*param_id, std::move(pk));
             }
         }
     }

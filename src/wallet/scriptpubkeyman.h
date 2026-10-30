@@ -282,6 +282,9 @@ private:
 
     KeyMap m_map_keys GUARDED_BY(cs_desc_man);
     CryptedKeyMap m_map_crypted_keys GUARDED_BY(cs_desc_man);
+    //! Qcoin / Option B: ML-DSA keypairs (by SHA256(pk)) backing this wpq() descriptor.
+    //! Persisted as walletdescriptormldsakey records, UNENCRYPTED (see doc/WALLET-PQC.md).
+    std::map<uint256, qcoin::pqc::MlDsaKeyPair> m_map_mldsa_keys GUARDED_BY(cs_desc_man);
 
     //! keeps track of whether Unlock has run a thorough check before
     bool m_decryption_thoroughly_checked = false;
@@ -367,6 +370,11 @@ public:
     bool IsHDEnabled() const override;
 
     bool HavePrivateKeys() const override;
+    //! Qcoin / Option B: persist an ML-DSA keypair for this descriptor and keep it in memory.
+    bool AddMlDsaKeyWithDB(WalletBatch& batch, const uint256& pk_hash, const qcoin::pqc::MlDsaKeyPair& key);
+    //! Qcoin / Option B: in-memory only, used while loading the wallet database.
+    void LoadMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair key);
+    size_t MlDsaKeyCount() const;
     bool HasPrivKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     //! Retrieve the particular key if it is available. Returns nullopt if the key is not in the wallet, or if the wallet is locked.
     std::optional<CKey> GetKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);

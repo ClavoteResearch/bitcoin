@@ -1266,6 +1266,26 @@ bool DescriptorScriptPubKeyMan::CanGetAddresses(bool internal) const
            (HavePrivateKeys() || m_wallet_descriptor.GetNext() < m_wallet_descriptor.GetEnd() || m_wallet_descriptor.descriptor->CanSelfExpand());
 }
 
+bool DescriptorScriptPubKeyMan::AddMlDsaKeyWithDB(WalletBatch& batch, const uint256& pk_hash, const qcoin::pqc::MlDsaKeyPair& key)
+{
+    LOCK(cs_desc_man);
+    if (!batch.WriteDescriptorMlDsaKey(GetID(), pk_hash, static_cast<uint8_t>(key.scheme), key.pk, key.sk)) return false;
+    m_map_mldsa_keys[pk_hash] = key;
+    return true;
+}
+
+void DescriptorScriptPubKeyMan::LoadMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair key)
+{
+    LOCK(cs_desc_man);
+    m_map_mldsa_keys[pk_hash] = std::move(key);
+}
+
+size_t DescriptorScriptPubKeyMan::MlDsaKeyCount() const
+{
+    LOCK(cs_desc_man);
+    return m_map_mldsa_keys.size();
+}
+
 bool DescriptorScriptPubKeyMan::HavePrivateKeys() const
 {
     LOCK(cs_desc_man);
@@ -1350,6 +1370,12 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         // Always include musig_secnonces as this descriptor may have a participant private key
         // but not a musig() descriptor
         out_keys->musig2_secnonces = &m_musig2_secnonces;
+    }
+
+    // Qcoin / Option B: ML-DSA secrets for wpq() descriptors (not gated on HavePrivateKeys,
+    // which only counts secp256k1 keys).
+    if (include_private) {
+        for (const auto& [pk_hash, kp] : m_map_mldsa_keys) out_keys->mldsa_keys[pk_hash] = kp;
     }
 
     return out_keys;

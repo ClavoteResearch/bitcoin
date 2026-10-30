@@ -12,7 +12,7 @@
 #include <key.h>
 #include <musig.h>
 #include <policy/policy.h>
-#include <pqc/pqc.h> // Qcoin: wallet PQC scheme switch + ML-DSA key store
+#include <pqc/pqc.h> // Qcoin: ML-DSA sign/verify wrappers
 #include "../../fork/src/script/witness_v2.h" // Qcoin / Option B: attestation signing
 #include <util/log.h>
 #include <prevector.h>
@@ -88,28 +88,32 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
 }
 
 namespace {
-/** Qcoin / Option B: find the stored ML-DSA key whose key-path commitment equals `program`. */
-std::optional<std::pair<uint8_t, qcoin::pqc::MlDsaKeyPair>> FindMlDsaKeyForProgram(const std::vector<unsigned char>& program)
+/** Qcoin / Option B: the ML-DSA public key (and param_id) the provider knows for witness v2 program Q. */
+std::optional<std::pair<uint8_t, std::vector<unsigned char>>> FindMlDsaPubKeyForProgram(const SigningProvider& provider, const std::vector<unsigned char>& program)
 {
     if (program.size() != qcoin::v2::WITNESS_V2_PROGRAM_SIZE) return std::nullopt;
-    for (auto& kp : qcoin::pqc::MlDsaKeyStore::Instance().All()) {
-        const uint8_t param_id = qcoin::pqc::ParamIdFor(kp.scheme);
-        if (!qcoin::v2::SizesFor(param_id)) continue;
-        const uint256 q = qcoin::v2::ComputeCommitment(param_id, qcoin::v2::PubKeyHash(kp.pk), {});
-        if (std::equal(q.begin(), q.end(), program.begin())) return std::make_pair(param_id, std::move(kp));
-    }
-    return std::nullopt;
+    std::vector<unsigned char> pk;
+    if (!provider.GetMlDsaPubKey(program, pk)) return std::nullopt;
+    const auto param_id = qcoin::v2::ParamIdForPubKeyLen(pk.size());
+    if (!param_id) return std::nullopt;
+    return std::make_pair(*param_id, std::move(pk));
 }
 } // namespace
 
 bool MutableTransactionSignatureCreator::CreateMlDsaAttestation(const SigningProvider& provider, std::vector<unsigned char>& attestation, const std::vector<unsigned char>& program) const
 {
-    const auto found = FindMlDsaKeyForProgram(program);
+    const auto found = FindMlDsaPubKeyForProgram(provider, program);
     if (!found) {
-        LogInfo("Qcoin: no stored ML-DSA key commits to witness v2 program %s", HexStr(program).substr(0, 16));
+        LogInfo("Qcoin: provider knows no ML-DSA public key for witness v2 program %s", HexStr(program).substr(0, 16));
         return false;
     }
-    const auto& [param_id, kp] = *found;
+    const auto& [param_id, pk] = *found;
+    qcoin::pqc::MlDsaKeyPair kp;
+    if (!provider.GetMlDsaKey(qcoin::v2::PubKeyHash(pk), kp)) {
+        LogInfo("Qcoin: provider has no ML-DSA secret key for witness v2 program %s", HexStr(program).substr(0, 16));
+        return false;
+    }
+    if (qcoin::pqc::ParamIdFor(kp.scheme) != param_id) return false;
     // BIP section 6: sighash is the BIP 341 hash, key path, SIGHASH_DEFAULT (v2 has no hashtype byte).
     if (!m_txdata || !m_txdata->m_bip341_taproot_ready || !m_txdata->m_spent_outputs_ready) return false;
     ScriptExecutionData execdata;
@@ -1055,11 +1059,11 @@ public:
         // Qcoin / Option B: for fee estimation, use the real public key when we have it (so
         // the interpreter's commitment check passes under the dummy checker) and a
         // zero-filled signature of the right length; otherwise an ML-DSA-44-shaped blob.
-        if (const auto found = FindMlDsaKeyForProgram(program)) {
-            const auto& [param_id, kp] = *found;
+        if (const auto found = FindMlDsaPubKeyForProgram(provider, program)) {
+            const auto& [param_id, pk] = *found;
             const auto sizes = qcoin::v2::SizesFor(param_id);
             if (!sizes) return false;
-            attestation = qcoin::v2::BuildAttestation(param_id, kp.pk, std::vector<uint8_t>(sizes->sig, 0));
+            attestation = qcoin::v2::BuildAttestation(param_id, pk, std::vector<uint8_t>(sizes->sig, 0));
             return true;
         }
         attestation = qcoin::v2::BuildAttestation(qcoin::v2::PARAM_ID_MLDSA44, std::vector<uint8_t>(qcoin::v2::MLDSA44_PUBKEY_LEN, 0), std::vector<uint8_t>(qcoin::v2::MLDSA44_SIG_LEN, 0));

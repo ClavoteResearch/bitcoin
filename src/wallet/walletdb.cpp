@@ -61,6 +61,7 @@ const std::string WALLETDESCRIPTORCACHE{"walletdescriptorcache"};
 const std::string WALLETDESCRIPTORLHCACHE{"walletdescriptorlhcache"};
 const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
+const std::string WALLETDESCRIPTORMLDSAKEY{"walletdescriptormldsakey"}; // Qcoin / Option B
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
@@ -232,6 +233,14 @@ bool WalletBatch::WriteDescriptorKey(const uint256& desc_id, const CPubKey& pubk
     const auto keypair_hash = Hash(pubkey, privkey);
 
     return WriteIC(std::make_pair(DBKeys::WALLETDESCRIPTORKEY, std::make_pair(desc_id, pubkey)), std::make_pair(privkey, keypair_hash), false);
+}
+
+bool WalletBatch::WriteDescriptorMlDsaKey(const uint256& desc_id, const uint256& pk_hash, uint8_t scheme, const std::vector<unsigned char>& pk, const std::vector<unsigned char>& sk)
+{
+    // Qcoin / Option B: the secret key is stored in plaintext; wallet encryption does not cover it yet.
+    const auto keypair_hash = Hash(pk, sk);
+    return WriteIC(std::make_pair(DBKeys::WALLETDESCRIPTORMLDSAKEY, std::make_pair(desc_id, pk_hash)),
+                   std::make_pair(scheme, std::make_pair(pk, std::make_pair(sk, keypair_hash))), false);
 }
 
 bool WalletBatch::WriteCryptedDescriptorKey(const uint256& desc_id, const CPubKey& pubkey, const std::vector<unsigned char>& secret)
@@ -925,6 +934,45 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
         } catch (std::runtime_error& e) {
             strErr = e.what();
             return DBErrors::CORRUPT;
+        }
+
+        // Qcoin / Option B: plaintext ML-DSA keypairs backing a wpq() descriptor.
+        {
+            auto* mldsa_spkm = dynamic_cast<DescriptorScriptPubKeyMan*>(pwallet->GetScriptPubKeyMan(id));
+            unsigned num_mldsa = 0;
+            DataStream mprefix = PrefixStream(DBKeys::WALLETDESCRIPTORMLDSAKEY, id);
+            LoadResult mres = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORMLDSAKEY, mprefix,
+                [&id, mldsa_spkm, &num_mldsa] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+                uint256 desc_id, pk_hash;
+                key >> desc_id;
+                assert(desc_id == id);
+                key >> pk_hash;
+                uint8_t scheme;
+                std::vector<unsigned char> pk, sk;
+                uint256 hash;
+                value >> scheme >> pk >> sk >> hash;
+                if (Hash(pk, sk) != hash) {
+                    err = "Error reading wallet database: ML-DSA key record corrupt";
+                    return DBErrors::CORRUPT;
+                }
+                if (scheme == 0 || scheme > static_cast<uint8_t>(qcoin::pqc::SigScheme::MLDSA87)) {
+                    err = "Error reading wallet database: unknown ML-DSA scheme";
+                    return DBErrors::CORRUPT;
+                }
+                if (!mldsa_spkm) {
+                    err = "Error reading wallet database: ML-DSA key for a non-descriptor ScriptPubKeyMan";
+                    return DBErrors::CORRUPT;
+                }
+                qcoin::pqc::MlDsaKeyPair kp;
+                kp.scheme = static_cast<qcoin::pqc::SigScheme>(scheme);
+                kp.pk = std::move(pk);
+                kp.sk = std::move(sk);
+                mldsa_spkm->LoadMlDsaKey(pk_hash, std::move(kp));
+                ++num_mldsa;
+                return DBErrors::LOAD_OK;
+            });
+            result = std::max(result, mres.m_result);
+            if (num_mldsa > 0) pwallet->WalletLogPrintf("Qcoin: loaded %u ML-DSA key(s) for descriptor %s", num_mldsa, id.ToString().substr(0, 16));
         }
 
         return result;

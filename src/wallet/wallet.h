@@ -771,7 +771,8 @@ public:
     util::Result<CTxDestination> GetNewDestination(OutputType type, const std::string& label);
     /**
      * Qcoin / Option B: generate a fresh ML-DSA keypair for the configured
-     * -walletsigscheme, store it (dev key store), import the matching wpq()
+     * -walletsigscheme, import the matching wpq() descriptor and store the
+     * keypair in the wallet database
      * descriptor under `label`, and return its witness v2 destination.
      */
     util::Result<CTxDestination> GetNewMlDsaDestination(const std::string& label) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
@@ -1026,8 +1027,8 @@ public:
 
     //! Create new seed and default DescriptorScriptPubKeyMans for this wallet
     void SetupOwnDescriptorScriptPubKeyMans(WalletBatch& batch) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    /** Qcoin / Option B: keygen + key store + wpq() import on an existing batch (safe inside RunWithinTxn). */
-    util::Result<CTxDestination> CreateMlDsaKeyAndImportWithDB(WalletBatch& batch, const std::string& label, bool make_default) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    /** Qcoin / Option B: keygen + wpq() import + DB key record on an existing batch (safe inside RunWithinTxn). */
+    util::Result<CTxDestination> CreateMlDsaKeyAndImportWithDB(WalletBatch& batch, const std::string& label) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Setup new descriptors or seed for new address generation
     void SetupWalletGeneration() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);

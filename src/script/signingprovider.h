@@ -15,6 +15,8 @@
 #include <sync.h>
 #include <uint256.h>
 
+#include <pqc/pqc.h> // Qcoin: MlDsaKeyPair
+
 #include <compare>
 #include <cstdint>
 #include <functional>
@@ -182,6 +184,13 @@ public:
     virtual std::optional<std::reference_wrapper<MuSig2SecNonce>> GetMuSig2SecNonce(const uint256& session_id) const { return std::nullopt; }
     virtual void DeleteMuSig2Session(const uint256& session_id) const {}
 
+    /**
+     * Qcoin / Option B: ML-DSA key material for witness v2 outputs.
+     * `program` is the 32-byte v2 witness program Q; `pk_hash` is SHA256(pubkey).
+     */
+    virtual bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const { return false; }
+    virtual bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const { return false; }
+
     bool GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const
     {
         for (const auto& id : pubkey.GetKeyIDs()) {
@@ -218,6 +227,8 @@ private:
 
 public:
     HidingSigningProvider(const SigningProvider* provider, bool hide_secret, bool hide_origin) : m_hide_secret(hide_secret), m_hide_origin(hide_origin), m_provider(provider) {}
+    bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
+    bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
@@ -240,7 +251,11 @@ struct FlatSigningProvider final : public SigningProvider
     std::map<XOnlyPubKey, TaprootBuilder> tr_trees; /** Map from output key to Taproot tree (which can then make the TaprootSpendData */
     std::map<CPubKey, std::vector<CPubKey>> aggregate_pubkeys; /** MuSig2 aggregate pubkeys */
     std::map<uint256, MuSig2SecNonce>* musig2_secnonces{nullptr};
+    std::map<std::vector<unsigned char>, std::vector<unsigned char>> mldsa_pubkeys; /** Qcoin: witness v2 program Q -> ML-DSA public key */
+    std::map<uint256, qcoin::pqc::MlDsaKeyPair> mldsa_keys; /** Qcoin: SHA256(pk) -> ML-DSA keypair (secret!) */
 
+    bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
+    bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
@@ -343,6 +358,8 @@ public:
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
+    bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
+    bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
 };

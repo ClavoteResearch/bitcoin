@@ -1,5 +1,6 @@
-// Qcoin (QTC) post-quantum wallet signature scheme switch, liboqs ML-DSA stubs,
-// and a minimal development-only ML-DSA key store.
+// Qcoin (QTC) post-quantum wallet signature scheme switch and liboqs ML-DSA wrappers.
+// ML-DSA secret keys live in the wallet database (walletdescriptormldsakey records);
+// this library holds no key state.
 //
 // This module is wallet/signing-side only. Consensus verification lives in
 // fork/src/script/verify_stub.h. See doc/WALLET-PQC.md for the integration plan
@@ -10,8 +11,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <map>
-#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -82,53 +81,6 @@ uint8_t ParamIdFor(SigScheme scheme);
 /** Sign/verify with a FIPS 204 context string (pure mode). Empty ctx == MlDsaSign/MlDsaVerify. */
 bool MlDsaSignCtx(SigScheme scheme, std::span<const uint8_t> sk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::vector<uint8_t>& sig);
 bool MlDsaVerifyCtx(SigScheme scheme, std::span<const uint8_t> pk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::span<const uint8_t> sig);
-
-/** 20-byte identifier (a CKeyID / uint160 in Core terms) used to index stored keys. */
-using KeyId = std::array<uint8_t, 20>;
-
-/**
- * Minimal process-wide ML-DSA key store. DEVELOPMENT ONLY.
- *
- * - In memory, guarded by a mutex; one instance per process.
- * - Keys are indexed by the 20-byte id of the secp256k1 key they were generated
- *   alongside (the wallet's HD seed key today). Because the signing path is
- *   asked for the ID of the *spending* key, which is a derived child, lookups
- *   usually miss, and the store falls back to a single "default" keypair. This
- *   is a stopgap until descriptors can carry ML-DSA keys.
- * - Save()/Load() write a plain, UNENCRYPTED binary file next to the wallet
- *   database (mldsa_keys.dat). Secret keys are not protected by the wallet
- *   passphrase and are not wiped from memory. Do not use with real funds.
- */
-class MlDsaKeyStore
-{
-public:
-    static MlDsaKeyStore& Instance();
-
-    /** Add or replace a keypair. If make_default, it becomes the fallback key. */
-    void Add(const KeyId& id, MlDsaKeyPair kp, bool make_default);
-    std::optional<MlDsaKeyPair> Get(const KeyId& id) const;
-    std::optional<MlDsaKeyPair> GetDefault() const;
-    /** Get(id), else GetDefault(). Only returns a key whose scheme matches. */
-    std::optional<MlDsaKeyPair> GetForSigning(const KeyId& id, SigScheme scheme) const;
-    size_t Size() const;
-    /** Snapshot of every stored keypair (copies). */
-    std::vector<MlDsaKeyPair> All() const;
-    void Clear();
-
-    /** Serialise all keys to path (overwrites). Returns false on I/O error. */
-    bool Save(const std::string& path) const;
-    /** Merge keys from path into the store. Returns false if the file is absent or malformed. */
-    bool Load(const std::string& path);
-
-    /** File name used next to the wallet database. */
-    static constexpr const char* kFileName = "mldsa_keys.dat";
-
-private:
-    MlDsaKeyStore() = default;
-    mutable std::mutex m_mutex;
-    std::map<KeyId, MlDsaKeyPair> m_keys;
-    std::optional<KeyId> m_default;
-};
 
 } // namespace qcoin::pqc
 

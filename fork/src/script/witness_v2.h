@@ -62,6 +62,16 @@ inline std::optional<ParamSizes> SizesFor(uint8_t param_id)
     return std::nullopt; // 0x02 reserved; everything else invalid (section 2)
 }
 
+/** param_id implied by an encoded public key length, or nullopt. */
+inline std::optional<uint8_t> ParamIdForPubKeyLen(size_t pk_len)
+{
+    if (pk_len == MLDSA44_PUBKEY_LEN) return PARAM_ID_MLDSA44;
+#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
+    if (pk_len == MLDSA87_PUBKEY_LEN) return PARAM_ID_MLDSA87_EXPERIMENTAL;
+#endif
+    return std::nullopt;
+}
+
 /** liboqs algorithm name for a spendable param_id, or nullptr. */
 inline const char* OqsAlgFor(uint8_t param_id)
 {

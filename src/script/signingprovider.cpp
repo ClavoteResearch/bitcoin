@@ -49,6 +49,15 @@ bool HidingSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& inf
     if (m_hide_origin) return false;
     return m_provider->GetKeyOrigin(keyid, info);
 }
+bool HidingSigningProvider::GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const
+{
+    return m_provider->GetMlDsaPubKey(program, pubkey);
+}
+bool HidingSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const
+{
+    if (m_hide_secret) return false;
+    return m_provider->GetMlDsaKey(pk_hash, key);
+}
 
 bool HidingSigningProvider::GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const
 {
@@ -147,6 +156,21 @@ void FlatSigningProvider::DeleteMuSig2Session(const uint256& session_id) const
     musig2_secnonces->erase(session_id);
 }
 
+bool FlatSigningProvider::GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const
+{
+    const auto it = mldsa_pubkeys.find(program);
+    if (it == mldsa_pubkeys.end()) return false;
+    pubkey = it->second;
+    return true;
+}
+bool FlatSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const
+{
+    const auto it = mldsa_keys.find(pk_hash);
+    if (it == mldsa_keys.end()) return false;
+    key = it->second;
+    return true;
+}
+
 FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
 {
     scripts.merge(b.scripts);
@@ -155,6 +179,8 @@ FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
     origins.merge(b.origins);
     tr_trees.merge(b.tr_trees);
     aggregate_pubkeys.merge(b.aggregate_pubkeys);
+    mldsa_pubkeys.merge(b.mldsa_pubkeys);
+    mldsa_keys.merge(b.mldsa_keys);
     // We shouldn't be merging 2 different sessions, just overwrite with b's sessions.
     if (!musig2_secnonces) musig2_secnonces = b.musig2_secnonces;
     return *this;
@@ -325,6 +351,22 @@ bool MultiSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const
 {
     for (const auto& provider: m_providers) {
         if (provider->GetKey(keyid, key)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetMlDsaPubKey(program, pubkey)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetMlDsaKey(pk_hash, key)) return true;
     }
     return false;
 }

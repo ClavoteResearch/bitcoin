@@ -13,7 +13,7 @@ in the clavote-boop/BIP repository (`docs/spec/bip-mldsa-formal.md`).
 | ECDSA fallback | CMake option `QCOIN_ECDSA_FALLBACK` (default ON) | When ON, inputs that are not ML-DSA-87 sized fall back to secp256k1 verification, so regtest spends with ordinary wallets work. Turn OFF to test strict routing. |
 | Wallet scheme switch | `fork/src/pqc/pqc.h`, `-walletsigscheme=<ecdsa\|mldsa44\|mldsa87>` | Runtime, read once in `WalletInit::ParameterInteraction`. Compile-time default via `-DQCOIN_DEFAULT_SIG_SCHEME=<0\|1\|2>`. Default `ecdsa`. |
 | ML-DSA keygen / sign / verify | `fork/src/pqc/pqc.cpp` | Thin liboqs wrappers for ML-DSA-44 and ML-DSA-87. Functional. |
-| ML-DSA key store (dev only) | `qcoin::pqc::MlDsaKeyStore` | Process-wide, in memory, mutex-guarded. Keys indexed by the 20-byte ID of the HD seed key they were generated with; one key is the wallet "default". Saved **unencrypted** to `mldsa_keys.dat` next to the wallet database and reloaded in `CWallet::LoadExisting`. |
+| ML-DSA key storage | `walletdescriptormldsakey` records (`wallet/walletdb.cpp`), `DescriptorScriptPubKeyMan::m_map_mldsa_keys` | One record per key, keyed by (descriptor id, SHA256(pk)), value (scheme, pk, sk, hash). Loaded with the descriptor and exposed to signing through `SigningProvider::GetMlDsaKey`. **Plaintext**: wallet encryption does not cover these yet, and adding ML-DSA keys to an encrypted wallet is refused. The former process-wide `mldsa_keys.dat` store is gone. |
 | Keygen call site | `wallet/wallet.cpp`, `CWallet::SetupOwnDescriptorScriptPubKeyMans` | With a non-ECDSA scheme, a keypair is generated, added to the store as default, and saved to disk. |
 | Witness v2 definitions (Option B) | `fork/src/script/witness_v2.h` | Constants, attestation parser/builder, commitment computation, section 6 message builder and ML-DSA verify with context, per BIP sections 1-3 and 6. Wired into the interpreter only under `QCOIN_WITNESS_V2_EXPERIMENTAL`; `Qcoin / Option B` marker comments in solver, key_io, descriptor, outputtype and addresstype show where the rest attaches. |
 | Signing call site | `script/sign.cpp`, `MutableTransactionSignatureCreator::CreateMlDsaAttestation` | Witness v2 programs are routed here by `ProduceSignature` (experimental builds). ECDSA inputs are ECDSA-signed again. |
@@ -31,16 +31,19 @@ not ML-DSA-87 sized and, with the fallback on, secp256k1 verification of a
 4627-byte ML-DSA signature fails. Without the fallback it fails the same way.
 Nothing short of outputs that commit to an ML-DSA public key can make this pass.
 
-### Known limitations of the key store
+### Key storage: what is and is not covered
 
-- Secret keys are written in plaintext and are not covered by the wallet
-  passphrase. They are never wiped from memory except on `Clear()`.
-- One store per process. Two loaded wallets share it, and a second wallet's
-  keygen overrides the default key.
-- Lookups by the spending key's ID almost always miss (the stored ID is the
-  seed key's), so every spend uses the default key. This is intentional for
-  now; see "Descriptors" below.
-- No RPC exposes the keys; inspect `debug.log` or the file.
+- Keys are wallet-scoped. Two wallets in one process each load only their own
+  `walletdescriptormldsakey` records; one wallet cannot see or spend the other's
+  v2 coins. A wallet backup (`backupwallet`) includes them.
+- Secret keys are plaintext in the database. `DescriptorScriptPubKeyMan::Encrypt`
+  only encrypts secp256k1 keys, so `encryptwallet` leaves ML-DSA secrets in the
+  clear; creating ML-DSA keys in an already-encrypted wallet is refused.
+- Secrets are not held in a secure allocator and are not wiped from memory.
+- There is no HD derivation: every `getnewmldsaaddress` call stores an
+  independent keypair (about 3.9 KB for ML-DSA-44).
+- No RPC exposes the keys; `listdescriptors true` cannot print a private form
+  of `wpq()`.
 
 ## The decision to make first: interpreter routing vs. witness v2
 
@@ -81,7 +84,7 @@ with only 32-byte stack operands. ML-DSA-44 is the only parameter set defined.
 ### Recommendation
 
 Choose B. Everything built so far is reusable under B: `pqc.h` already models
-both parameter sets, `MlDsaKeyStore` becomes the interim backing for a
+both parameter sets, the `walletdescriptormldsakey` records become the backing for a
 `mldsa()` descriptor key, and `verify_stub.h` collapses to a helper that the
 attestation verifier calls. If A is kept instead, document it as a hard-fork
 testnet experiment and delete the BIP compliance section from the draft.
@@ -98,10 +101,11 @@ What exists:
   HEXPK is the 1312-byte FIPS 204 ML-DSA-44 public key (2592-byte ML-DSA-87 is
   accepted only in experimental builds, as `param_id` 0x7f). `MakeScripts`
   emits `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id ||
-  SHA256(pk))`. There is no PubkeyProvider yet: the key is a literal and the
-  secret key is resolved from `MlDsaKeyStore` at signing time. Available in
+  SHA256(pk))` and registers `Q -> pk` in the `FlatSigningProvider` it expands
+  into. There is no PubkeyProvider yet: the key is a literal and the secret is
+  supplied by `SigningProvider::GetMlDsaKey`. Available in
   all builds; `getdescriptorinfo "wpq(<hex>)"` works. `InferDescriptor` maps
-  `OP_2 <Q>` back to `wpq(pk)` when a stored key commits to Q; the wallet sizes
+  `OP_2 <Q>` back to `wpq(pk)` when the provider knows the key behind Q; the wallet sizes
   inputs from the inferred descriptor's `MaxSatisfactionWeight`, so this is what
   makes the coin solvable and selectable.
 - **Address.** No new `CTxDestination`. `OP_2 <Q>` decodes as the existing
@@ -116,14 +120,16 @@ What exists:
   calls it once (label `mldsa`, marked as the store's default key). The
   `getnewmldsaaddress [label]` RPC calls it again on demand, so each call yields
   a new key and a new `bcrt1z` address with no manual descriptor import. There
-  is no derivation: every address is an independent keypair in `mldsa_keys.dat`
-  (back it up with the wallet). `getnewaddress`/`-addresstype` still cannot
+  is no derivation: every address is an independent keypair stored as a
+  `walletdescriptormldsakey` record in the wallet database, so a wallet backup
+  covers it. `getnewaddress`/`-addresstype` still cannot
   produce v2 addresses, since that needs the dedicated `OutputType`.
 - **Signing.** `BaseSignatureCreator::CreateMlDsaAttestation` builds the
   one-entry attestation. `ProduceSignature` routes any 32-byte witness v2
   program to it (experimental builds only), skipping the script solver, and
-  finalises with `VerifyScript`. The mutable creator finds the stored key whose
-  commitment equals the program, computes the BIP 341 sighash
+  finalises with `VerifyScript`. The mutable creator asks the provider for the
+  public key behind the program and then for its secret (`GetMlDsaPubKey`,
+  `GetMlDsaKey`), computes the BIP 341 sighash
   (`SIGHASH_DEFAULT`), signs the section 6 message under ctx `BIP-MLDSAv2`
   and emits `0x51 || 1 || param_id || pk || sig`. The dummy creator emits a
   real-pk, zero-sig attestation so fee estimation and coin selection see a
@@ -247,10 +253,10 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
       exposes `pk_hash`, and resolves the secret key for signing.
 - [~] `wpq(HEXPK)` key-path `DescriptorImpl` emitting `OP_2 <ComputeCommitment(param_id, pk_hash)>`.
       `wpq(KEY,{TREE})` script path not implemented.
-- [ ] `SigningProvider::GetMlDsaKey(pk_hash, sk)`; replace the
-      `MlDsaKeyStore` default-key fallback in `script/sign.cpp` with it.
-- [ ] Wallet DB record type for ML-DSA secrets, encrypted via `crypter.cpp`,
-      replacing `mldsa_keys.dat`.
+- [x] `SigningProvider::GetMlDsaKey(pk_hash, key)` replaces the old global store
+      lookup in `script/sign.cpp`.
+- [~] Wallet DB record type for ML-DSA secrets exists (`walletdescriptormldsakey`);
+      encryption via `crypter.cpp` pending.
 
 ### 6. Parser and signer: `script/sign.cpp`, `script/interpreter.cpp`
 - [~] `ProduceSignature`: key path done (`CreateMlDsaAttestation`, witness `[attestation]`).
@@ -269,8 +275,9 @@ with `QCOIN_ECDSA_FALLBACK=OFF` and commit 13d6b525 reverted.
 ## Remaining gaps (both options unless noted)
 
 ### Key material and storage
-- Replace `MlDsaKeyStore` with wallet-DB records (encrypted via `crypter.cpp`,
-  which currently assumes 32-byte secrets) and a secure-allocator key type.
+- [~] ML-DSA keys are wallet-DB records (`walletdescriptormldsakey`, per descriptor),
+  plaintext. Encryption via `crypter.cpp` (which assumes 32-byte secrets) and a
+  secure-allocator key type are pending.
 - `SigningProvider` has no `GetMlDsaKey(...)`; the signer bypasses it.
 - No HD derivation. FIPS 204 keygen takes a 32-byte seed, so a BIP32-style
   path to a seed is plausible, but it needs a spec.
@@ -310,7 +317,7 @@ build/bin/bitcoind -regtest -daemon
 # spend attempts (see debug.log), but the spend is rejected at VerifyScript
 build/bin/bitcoind -regtest -daemon -walletsigscheme=mldsa87
 
-# the key survives a restart via <walletdir>/mldsa_keys.dat
+# the key survives a restart: it is a record in wallet.dat
 build/bin/bitcoin-cli -regtest stop && build/bin/bitcoind -regtest -daemon -walletsigscheme=mldsa87
 
 # strict consensus routing (no ECDSA fallback)
