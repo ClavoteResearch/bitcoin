@@ -249,6 +249,15 @@ size_t MlDsaKeyStore::Size() const
     return m_keys.size();
 }
 
+std::vector<MlDsaKeyPair> MlDsaKeyStore::All() const
+{
+    std::lock_guard<std::mutex> l(m_mutex);
+    std::vector<MlDsaKeyPair> out;
+    out.reserve(m_keys.size());
+    for (const auto& [id, kp] : m_keys) out.push_back(kp);
+    return out;
+}
+
 void MlDsaKeyStore::Clear()
 {
     std::lock_guard<std::mutex> l(m_mutex);

@@ -111,6 +111,8 @@ public:
     /** Get(id), else GetDefault(). Only returns a key whose scheme matches. */
     std::optional<MlDsaKeyPair> GetForSigning(const KeyId& id, SigScheme scheme) const;
     size_t Size() const;
+    /** Snapshot of every stored keypair (copies). */
+    std::vector<MlDsaKeyPair> All() const;
     void Clear();
 
     /** Serialise all keys to path (overwrites). Returns false on I/O error. */

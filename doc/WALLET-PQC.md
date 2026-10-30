@@ -16,7 +16,8 @@ in the clavote-boop/BIP repository (`docs/spec/bip-mldsa-formal.md`).
 | ML-DSA key store (dev only) | `qcoin::pqc::MlDsaKeyStore` | Process-wide, in memory, mutex-guarded. Keys indexed by the 20-byte ID of the HD seed key they were generated with; one key is the wallet "default". Saved **unencrypted** to `mldsa_keys.dat` next to the wallet database and reloaded in `CWallet::LoadExisting`. |
 | Keygen call site | `wallet/wallet.cpp`, `CWallet::SetupOwnDescriptorScriptPubKeyMans` | With a non-ECDSA scheme, a keypair is generated, added to the store as default, and saved to disk. |
 | Witness v2 definitions (Option B) | `fork/src/script/witness_v2.h` | Constants, attestation parser/builder, commitment computation, section 6 message builder and ML-DSA verify with context, per BIP sections 1-3 and 6. Wired into the interpreter only under `QCOIN_WITNESS_V2_EXPERIMENTAL`; `Qcoin / Option B` marker comments in solver, key_io, descriptor, outputtype and addresstype show where the rest attaches. |
-| Signing call site | `script/sign.cpp`, `MutableTransactionSignatureCreator::CreateSig` | With a non-ECDSA scheme, the store is queried by key ID, then by default. If a key is found a real ML-DSA signature is produced and logged. The spend still fails at `VerifyScript` because the UTXO commits to a secp256k1 pubkey. |
+| Signing call site | `script/sign.cpp`, `MutableTransactionSignatureCreator::CreateMlDsaAttestation` | Witness v2 programs are routed here by `ProduceSignature` (experimental builds). ECDSA inputs are ECDSA-signed again. |
+| wpq() descriptor + wallet import | `script/descriptor.cpp`, `wallet/wallet.cpp` | `wpq(HEXPK)` emits `OP_2 <Q>`; imported under label `mldsa` at wallet creation with a non-ECDSA scheme. Address is `bcrt1z...` via `WitnessUnknown`. |
 
 The ECDSA path is untouched when `-walletsigscheme=ecdsa` (the default), so all
 existing wallet and functional test flows keep working.
@@ -84,6 +85,72 @@ both parameter sets, `MlDsaKeyStore` becomes the interim backing for a
 `mldsa()` descriptor key, and `verify_stub.h` collapses to a helper that the
 attestation verifier calls. If A is kept instead, document it as a hard-fork
 testnet experiment and delete the BIP compliance section from the draft.
+
+## Receiving to and spending from a witness v2 output
+
+With a build configured `-DQCOIN_WITNESS_V2_EXPERIMENTAL=ON` and a node started
+with `-walletsigscheme=mldsa44`, a wallet can now receive to and spend from a
+key-path witness v2 ML-DSA output end to end on regtest.
+
+What exists:
+
+- **Descriptor.** `wpq(HEXPK)` (`script/descriptor.cpp`, `WpqDescriptor`).
+  HEXPK is the 1312-byte FIPS 204 ML-DSA-44 public key (2592-byte ML-DSA-87 is
+  accepted only in experimental builds, as `param_id` 0x7f). `MakeScripts`
+  emits `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id ||
+  SHA256(pk))`. There is no PubkeyProvider yet: the key is a literal and the
+  secret key is resolved from `MlDsaKeyStore` at signing time. Available in
+  all builds; `getdescriptorinfo "wpq(<hex>)"` works. `InferDescriptor` maps
+  `OP_2 <Q>` back to `wpq(pk)` when a stored key commits to Q; the wallet sizes
+  inputs from the inferred descriptor's `MaxSatisfactionWeight`, so this is what
+  makes the coin solvable and selectable.
+- **Address.** No new `CTxDestination`. `OP_2 <Q>` decodes as the existing
+  `WitnessUnknown{2, Q}`, which `EncodeDestination` already renders as bech32m
+  version 2 (`bcrt1z...` on regtest, `bc1z...` on mainnet), and
+  `GetScriptForDestination` round-trips. The `Qcoin / Option B` markers for a
+  dedicated destination and `OutputType` remain for when `-addresstype` support
+  is wanted.
+- **Wallet import.** At wallet creation with a non-ECDSA scheme, after the
+  ML-DSA keypair is generated and stored, the wallet imports
+  `wpq(<pk>)` as a non-ranged descriptor under label `mldsa`
+  (`CWallet::SetupOwnDescriptorScriptPubKeyMans`). `getaddressesbylabel mldsa`
+  returns the `bcrt1z` address; the output is `IsMine` and spendable.
+- **Signing.** `BaseSignatureCreator::CreateMlDsaAttestation` builds the
+  one-entry attestation. `ProduceSignature` routes any 32-byte witness v2
+  program to it (experimental builds only), skipping the script solver, and
+  finalises with `VerifyScript`. The mutable creator finds the stored key whose
+  commitment equals the program, computes the BIP 341 sighash
+  (`SIGHASH_DEFAULT`), signs the section 6 message under ctx `BIP-MLDSAv2`
+  and emits `0x51 || 1 || param_id || pk || sig`. The dummy creator emits a
+  real-pk, zero-sig attestation so fee estimation and coin selection see a
+  3735-byte witness.
+- **Consensus/policy plumbing (experimental builds).**
+  `PrecomputedTransactionData::Init` treats a spent `OP_2 <32>` output like
+  taproot so the BIP 341 midstate is computed during block validation;
+  `AreInputsStandard` accepts such inputs so the mempool does not reject the
+  spend as `bad-txns-nonstandard-inputs`.
+- **CreateSig is ECDSA again.** The earlier stopgap that made legacy/segwit-v0
+  inputs sign with ML-DSA is removed: a wallet with `-walletsigscheme=mldsa44`
+  spends its P2WPKH coins with ECDSA and its `wpq()` coin with ML-DSA. The
+  scheme now only selects which ML-DSA parameter set the wallet generates and
+  attests with.
+
+Regtest flow (see `fork/test/regtest_v2_spend.sh`):
+
+```bash
+bitcoind -regtest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
+bitcoin-cli -regtest createwallet miner;  bitcoin-cli -regtest createwallet pq
+M=$(bitcoin-cli -regtest -rpcwallet=miner getnewaddress); bitcoin-cli -regtest generatetoaddress 101 $M
+PQ=$(bitcoin-cli -regtest -rpcwallet=pq getaddressesbylabel mldsa | jq -r 'keys[0]')   # bcrt1z...
+bitcoin-cli -regtest -rpcwallet=miner sendtoaddress $PQ 10; bitcoin-cli -regtest generatetoaddress 1 $M
+bitcoin-cli -regtest -rpcwallet=pq sendtoaddress $M 5                                  # ML-DSA attestation spend
+bitcoin-cli -regtest generatetoaddress 1 $M                                            # accepted into a block
+```
+
+Not done: `-addresstype` / `getnewaddress` for v2 (needs the dedicated
+destination and `OutputType`), script-path `wpq(KEY,{TREE})`, PSBT fields,
+encrypted key storage, HD derivation, and any of the canonical-encoding and
+deployment-flag items below.
 
 ## Sighash and signature message (BIP section 6)
 
@@ -173,25 +240,21 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
 ### 5. Descriptor change: `script/descriptor.cpp`, `script/signingprovider.h`
 - [ ] ML-DSA `PubkeyProvider`: parses a 1312-byte hex key or an HD-seed form,
       exposes `pk_hash`, and resolves the secret key for signing.
-- [ ] `wpq(KEY)` and `wpq(KEY,{TREE})` `DescriptorImpl` whose `MakeScripts`
-      emits `OP_2 <ComputeCommitment(0x01, pk_hash, merkle_root)>` (names are
-      reserved with a not-implemented error today).
+- [~] `wpq(HEXPK)` key-path `DescriptorImpl` emitting `OP_2 <ComputeCommitment(param_id, pk_hash)>`.
+      `wpq(KEY,{TREE})` script path not implemented.
 - [ ] `SigningProvider::GetMlDsaKey(pk_hash, sk)`; replace the
       `MlDsaKeyStore` default-key fallback in `script/sign.cpp` with it.
 - [ ] Wallet DB record type for ML-DSA secrets, encrypted via `crypter.cpp`,
       replacing `mldsa_keys.dat`.
 
 ### 6. Parser and signer: `script/sign.cpp`, `script/interpreter.cpp`
-- [ ] `ProduceSignature`: for a `WITNESS_V2_MLDSA` output build the section 6
-      message, sign with ML-DSA-44 under ctx `BIP-MLDSAv2`, and emit the
-      witness as `[attestation]` (key path) or
-      `[inputs..., leaf, control, attestation]` (script path).
+- [~] `ProduceSignature`: key path done (`CreateMlDsaAttestation`, witness `[attestation]`).
+      Script path pending.
 - [ ] `SignatureExtractorChecker` / `DataFromTransaction` understand the
       attestation so partially signed inputs round-trip through PSBT.
 - [ ] PSBT fields for ML-DSA pubkeys and partial signatures.
-- [ ] Functional test: create `wpq()` wallet on regtest, fund it, spend
-      key-path and script-path, assert both confirm; negative tests for every
-      structural rule in section 3.
+- [~] Regtest script `fork/test/regtest_v2_spend.sh` funds and spends a `wpq()`
+      output (key path). Script path and a proper functional test pending.
 
 ### Exit criteria
 A regtest wallet with `-walletsigscheme=mldsa44 -addresstype=bech32m-v2`

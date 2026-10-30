@@ -12,8 +12,8 @@
 #include <key.h>
 #include <musig.h>
 #include <policy/policy.h>
-#include <pqc/pqc.h> // Qcoin: wallet PQC scheme switch + ML-DSA stubs
-#include <crypto/sha256.h>
+#include <pqc/pqc.h> // Qcoin: wallet PQC scheme switch + ML-DSA key store
+#include "../../fork/src/script/witness_v2.h" // Qcoin / Option B: attestation signing
 #include <util/log.h>
 #include <prevector.h>
 #include <primitives/transaction.h>
@@ -79,48 +79,50 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
 
     uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
 
-    // Qcoin: ML-DSA signing path. The secret key comes from the development
-    // MlDsaKeyStore (looked up by this key's ID, falling back to the wallet's
-    // default ML-DSA key) rather than from the SigningProvider, which is still
-    // secp256k1-only. The resulting signature is NOT yet a valid spend: the
-    // scriptPubKey commits to a secp256k1 pubkey, so consensus verification
-    // of an ML-DSA signature against it fails. See doc/WALLET-PQC.md.
-    if (const auto scheme = qcoin::pqc::GetWalletSigScheme(); scheme != qcoin::pqc::SigScheme::ECDSA) {
-        qcoin::pqc::KeyId id;
-        std::copy(address.begin(), address.end(), id.begin());
-        const auto kp = qcoin::pqc::MlDsaKeyStore::Instance().GetForSigning(id, scheme);
-        if (!kp) {
-            LogInfo("Qcoin: no %s key in store for %s; cannot sign", qcoin::pqc::SigSchemeName(scheme), address.ToString());
-            return false;
-        }
-        // BIP section 6: sign m = param_id || SHA256(pk) || sighash under ctx "BIP-MLDSAv2".
-        // `hash` here is still the legacy/segwit-v0 sighash of this P2PKH/P2WPKH input;
-        // a v2 output would use the BIP 341 hash (see CheckMlDsaSignature). The
-        // message framing and context are the BIP's, so only the sighash differs.
-        const uint8_t param_id = qcoin::pqc::ParamIdFor(scheme);
-        uint256 pk_hash;
-        CSHA256().Write(kp->pk.data(), kp->pk.size()).Finalize(pk_hash.begin());
-        std::vector<uint8_t> msg;
-        msg.reserve(65);
-        msg.push_back(param_id);
-        msg.insert(msg.end(), pk_hash.begin(), pk_hash.end());
-        msg.insert(msg.end(), hash.begin(), hash.end());
-        const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::pqc::SIGNATURE_CONTEXT), qcoin::pqc::SIGNATURE_CONTEXT_LEN);
-        std::vector<uint8_t> mldsa_sig;
-        if (!qcoin::pqc::MlDsaSignCtx(scheme, kp->sk, msg, ctx, mldsa_sig)) {
-            LogInfo("Qcoin: %s sign failed for %s", qcoin::pqc::SigSchemeName(scheme), address.ToString());
-            return false;
-        }
-        LogInfo("Qcoin: %s signed BIP-MLDSAv2 message (param_id=0x%02x, pk_hash=%s) over legacy sighash for %s: %u-byte signature; spend will not verify until the output is witness v2",
-                qcoin::pqc::SigSchemeName(scheme), param_id, pk_hash.ToString().substr(0, 16), address.ToString(), unsigned(mldsa_sig.size()));
-        vchSig = std::move(mldsa_sig);
-        vchSig.push_back((unsigned char)hashtype);
-        return true;
-    }
-
+    // Qcoin: ECDSA inputs are always ECDSA-signed. ML-DSA signing happens only for
+    // witness v2 outputs via CreateMlDsaAttestation (see ProduceSignature).
     if (!key.Sign(hash, vchSig))
         return false;
     vchSig.push_back((unsigned char)hashtype);
+    return true;
+}
+
+namespace {
+/** Qcoin / Option B: find the stored ML-DSA key whose key-path commitment equals `program`. */
+std::optional<std::pair<uint8_t, qcoin::pqc::MlDsaKeyPair>> FindMlDsaKeyForProgram(const std::vector<unsigned char>& program)
+{
+    if (program.size() != qcoin::v2::WITNESS_V2_PROGRAM_SIZE) return std::nullopt;
+    for (auto& kp : qcoin::pqc::MlDsaKeyStore::Instance().All()) {
+        const uint8_t param_id = qcoin::pqc::ParamIdFor(kp.scheme);
+        if (!qcoin::v2::SizesFor(param_id)) continue;
+        const uint256 q = qcoin::v2::ComputeCommitment(param_id, qcoin::v2::PubKeyHash(kp.pk), {});
+        if (std::equal(q.begin(), q.end(), program.begin())) return std::make_pair(param_id, std::move(kp));
+    }
+    return std::nullopt;
+}
+} // namespace
+
+bool MutableTransactionSignatureCreator::CreateMlDsaAttestation(const SigningProvider& provider, std::vector<unsigned char>& attestation, const std::vector<unsigned char>& program) const
+{
+    const auto found = FindMlDsaKeyForProgram(program);
+    if (!found) {
+        LogInfo("Qcoin: no stored ML-DSA key commits to witness v2 program %s", HexStr(program).substr(0, 16));
+        return false;
+    }
+    const auto& [param_id, kp] = *found;
+    // BIP section 6: sighash is the BIP 341 hash, key path, SIGHASH_DEFAULT (v2 has no hashtype byte).
+    if (!m_txdata || !m_txdata->m_bip341_taproot_ready || !m_txdata->m_spent_outputs_ready) return false;
+    ScriptExecutionData execdata;
+    execdata.m_annex_init = true;
+    execdata.m_annex_present = false;
+    uint256 sighash;
+    if (!SignatureHashSchnorr(sighash, execdata, m_txto, nIn, SIGHASH_DEFAULT, SigVersion::TAPROOT, *m_txdata, MissingDataBehavior::FAIL)) return false;
+    const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(param_id, qcoin::v2::PubKeyHash(kp.pk), sighash);
+    const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
+    std::vector<uint8_t> sig;
+    if (!qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig)) return false;
+    attestation = qcoin::v2::BuildAttestation(param_id, kp.pk, sig);
+    LogInfo("Qcoin: built %s attestation (%u bytes) for witness v2 input %u", qcoin::pqc::SigSchemeName(kp.scheme), unsigned(attestation.size()), nIn);
     return true;
 }
 
@@ -794,6 +796,25 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
 {
     if (sigdata.complete) return true;
 
+#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
+    {
+        // Qcoin / Option B: witness v2 ML-DSA output. The witness is a single attestation
+        // element; nothing goes through the script solver.
+        int witver{0};
+        std::vector<unsigned char> witprog;
+        if (fromPubKey.IsWitnessProgram(witver, witprog) && witver == qcoin::v2::WITNESS_V2_VERSION && witprog.size() == qcoin::v2::WITNESS_V2_PROGRAM_SIZE) {
+            std::vector<unsigned char> attestation;
+            if (!creator.CreateMlDsaAttestation(provider, attestation, witprog)) return false;
+            sigdata.scriptSig.clear();
+            sigdata.scriptWitness.stack.clear();
+            sigdata.scriptWitness.stack.push_back(std::move(attestation));
+            sigdata.witness = true;
+            sigdata.complete = VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());
+            return sigdata.complete;
+        }
+    }
+#endif
+
     std::vector<valtype> result;
     TxoutType whichType;
     bool solved = SignStep(provider, creator, fromPubKey, result, whichType, SigVersion::BASE, sigdata);
@@ -993,6 +1014,7 @@ public:
     DummySignatureChecker() = default;
     bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return sig.size() != 0; }
     bool CheckSchnorrSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const override { return sig.size() != 0; }
+    bool CheckMlDsaSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, uint8_t param_id, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const override { return sig.size() != 0; }
     bool CheckLockTime(const CScriptNum& nLockTime) const override { return true; }
     bool CheckSequence(const CScriptNum& nSequence) const override { return true; }
 };
@@ -1026,6 +1048,21 @@ public:
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* tweak, SigVersion sigversion) const override
     {
         sig.assign(64, '\000');
+        return true;
+    }
+    bool CreateMlDsaAttestation(const SigningProvider& provider, std::vector<unsigned char>& attestation, const std::vector<unsigned char>& program) const override
+    {
+        // Qcoin / Option B: for fee estimation, use the real public key when we have it (so
+        // the interpreter's commitment check passes under the dummy checker) and a
+        // zero-filled signature of the right length; otherwise an ML-DSA-44-shaped blob.
+        if (const auto found = FindMlDsaKeyForProgram(program)) {
+            const auto& [param_id, kp] = *found;
+            const auto sizes = qcoin::v2::SizesFor(param_id);
+            if (!sizes) return false;
+            attestation = qcoin::v2::BuildAttestation(param_id, kp.pk, std::vector<uint8_t>(sizes->sig, 0));
+            return true;
+        }
+        attestation = qcoin::v2::BuildAttestation(qcoin::v2::PARAM_ID_MLDSA44, std::vector<uint8_t>(qcoin::v2::MLDSA44_PUBKEY_LEN, 0), std::vector<uint8_t>(qcoin::v2::MLDSA44_SIG_LEN, 0));
         return true;
     }
     std::vector<uint8_t> CreateMuSig2Nonce(const SigningProvider& provider, const CPubKey& aggregate_pubkey, const CPubKey& script_pubkey, const CPubKey& part_pubkey, const uint256* leaf_hash, const uint256* merkle_root, SigVersion sigversion, const SignatureData& sigdata) const override
