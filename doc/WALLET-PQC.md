@@ -128,10 +128,11 @@ Launch checklist (in order):
 3. **Seed nodes.** Run at least two always-on nodes, add their addresses to
    `vSeeds` (DNS) or `vFixedSeeds`, and open port 28333. Until then, peers use
    `-addnode`/`-connect`.
-4. **Explorer.** Any Bitcoin Core compatible explorer works for blocks and
-   transactions, but it must learn the `tq` HRP and that witness version 2
-   outputs are ML-DSA attestations (3735-byte witness, `OP_2 <Q>`); until then
-   they show as "unknown witness v2".
+4. **Explorer.** `fork/tools/qtc-explorer.py` (see "Status page and explorer")
+   gives a read-only web view with ML-DSA labelling; run it behind a reverse
+   proxy on a seed node. Third-party explorers must learn the `tq` HRP and that
+   witness version 2 outputs are ML-DSA attestations (`OP_2 <Q>`, 3735-byte
+   witness); until then they show as "unknown witness v2".
 5. **Faucet.** A faucet wallet on an always-on node, started with
    `-walletsigscheme=mldsa44`, paying to both `tq1q` and `tq1z` addresses so
    testers can exercise ML-DSA receives and spends. Fund it from on-demand
@@ -140,6 +141,43 @@ Launch checklist (in order):
    `-chain=qtctest`, how to get a `tq1z` address (`getnewmldsaaddress`), how to
    read `getdeploymentinfo`, and what is still experimental (see "Testnet
    readiness" below).
+
+## Status page and explorer
+
+`fork/tools/qtc-explorer.py` is a standard-library-only Python companion that
+serves a small HTML explorer and JSON API over the node's JSON-RPC, so a qtctest
+node can be inspected without external tools. It knows what witness v2 outputs
+and ML-DSA attestations are and labels them.
+
+```bash
+# node (cookie auth is picked up from <datadir>/qtctest/.cookie)
+bitcoind -chain=qtctest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
+
+# explorer on http://127.0.0.1:8080/
+python3 fork/tools/qtc-explorer.py --chain qtctest
+#   --datadir DIR        node data directory if not ~/.bitcoin
+#   --rpcurl URL         if the RPC port is not the chain default (28332 for qtctest)
+#   --rpcuser/--rpcpassword   instead of the cookie
+#   --bind 0.0.0.0 --port 8080   to expose it (put a reverse proxy in front for a public testnet)
+#   --scan N             blocks to scan back for address and txid lookups (default 2000)
+```
+
+Pages: `/` (height, mldsav2 deployment state, mempool, peers, recent blocks with
+ML-DSA markers), `/blocks?from=H`, `/block/<height|hash>`, `/tx/<txid>`,
+`/address/<addr>`, `/mempool`, and a search box. JSON: `/api/status`,
+`/api/block/<ref>`, `/api/tx/<txid>`, `/api/address/<addr>`.
+
+- Outputs `OP_2 <32 bytes>` are shown as "witness v2 ML-DSA (OP_2 <Q>)"; inputs
+  whose single witness element parses as `0x51 || n || param_id || pk || sig`
+  are shown as "ML-DSA attestation: n entry, ML-DSA-44, 3735 bytes".
+- No address or transaction index is required: address history and txid lookups
+  scan the most recent `--scan` blocks (fine for a young testnet; enable
+  `-txindex` on the node for instant txid lookups of old transactions).
+- It is a read-only viewer bound to localhost by default. It is not a wallet and
+  never sees keys.
+
+`fork/test/regtest_qtctest_explorer.sh` starts a node and the explorer, mines,
+makes a tq1z spend, and checks every page.
 
 ## Testnet readiness
 
