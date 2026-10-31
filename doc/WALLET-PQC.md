@@ -437,34 +437,40 @@ Done:
   activation with the pre-activation soft-fork semantics above; `getdeploymentinfo`.
 - Policy: v2 spends standard once active, discouraged before; input sizing and
   fee estimation through the inferred `wpq()` descriptor.
-- Wallet: `wpq(HEXPK)` descriptor, bech32m v2 addresses (`bc1z`/`tb1z`/`bcrt1z`
+- Wallet: `wpq(HEXPK)` descriptor, bech32m v2 addresses (`bc1z`/`tq1z`/`bcrt1z`
   via `WitnessUnknown`), `getnewmldsaaddress`, HD derivation from the BIP32 root,
   keys stored per descriptor in the wallet database, encrypted with the
   passphrase, held in secure memory and wiped after signing, PSBT create/sign/
   finalise with a proprietary public-key field, watch-only tracking.
 - Tests: `qcoin-v2-selftest` and the `fork/test/regtest_v2_*.sh` scripts
   (spend, multi, encrypt, hd, psbt, activation).
+- Chain and tools: `qtctest` with its genesis and 1e00ffff target, example
+  config, two-node test, explorer, faucet, genesis helper, launch runbook
+  ("Public launch").
 
-Missing before a public testnet:
-- **Chain parameters**: `qtctest` exists (see "Testnet launch") but still needs
-  seed nodes, a proof-of-work decision, checkpoints/assumevalid, and the revert of
-  legacy ECDSA-path routing (commit 13d6b525, `QCOIN_ECDSA_FALLBACK`), which a
-  soft-fork design requires.
-- **Canonical signature encoding**: FIPS 204 hint-count/canonical-hint check
-  before `OQS_SIG_verify` (malleability, txid stability).
-- **Script path**: BIP sections 5 (`OP_CHECKMLDSAVERIFY`, control block, leaf
-  rules) and the v2 sighash extension for leaves; `wpq(KEY,{TREE})`.
-- **Dust and weight policy**: dust threshold from the ML-DSA spend size;
-  benchmark of worst-case per-block verification cost (BIP section 7).
-- **Address type plumbing**: dedicated `CTxDestination`/`OutputType` so
-  `getnewaddress`/`-addresstype` can produce v2 addresses.
-- **Derivation spec**: a published path and seed-expansion rule replacing the
-  single-level HMAC scheme; `encryptwallet` currently rotates the root.
-- **Test coverage**: Boost unit tests and Python functional tests (the current
-  checks are shell scripts), fuzz targets for the attestation parser and PSBT
-  field, and a BIP test-vector set (the BIP's vectors section is empty).
-- **Review**: the deterministic-RNG seeded keygen (`MlDsaKeygenFromSeed`) and
-  the proprietary PSBT field should be reviewed against the final BIP text.
+### Open items for public testnet
+
+Status at commit 31bda30. **Nothing below is broken**: every implemented path
+passes its tests; each row is missing functionality, an unfinished cleanup, or
+an operational step. "Before announcing" marks what should land before the
+network is opened to outside testers, because changing it afterwards means a
+new genesis or a soft fork of the testnet.
+
+| Item | Status | Before announcing? |
+|---|---|---|
+| Legacy ECDSA-path routing | Open. Commit 13d6b525 still routes legacy ECDSA checks through `fork/src/script/verify_stub.h`; with `QCOIN_ECDSA_FALLBACK=ON` (every build so far) behaviour equals upstream. Revert the commit, drop the option, keep witness v2 (checklist section 2). | Yes |
+| Canonical ML-DSA signature encoding | Open. liboqs accepts any valid encoding; add the FIPS 204 hint-count/canonical-hint check before `OQS_SIG_verify` in `witness_v2.h` so signatures are not malleable (txid stability). | Yes |
+| Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
+| Script path | Not started. BIP section 5: `OP_CHECKMLDSAVERIFY` (0xb3), control block and leaf rules, leaf sighash extension, `wpq(KEY,{TREE})`. Key path only until then. | No for a key-path testnet; adding it later is a soft fork of the testnet |
+| Checkpoints / assumevalid / `chainTxData` | Open. Set once the chain has a few thousand blocks; irrelevant at launch. | No |
+| Proof-of-work regime | Decided for now: 1e00ffff (about 3 s per block on one CPU). The 1d00ffff genesis is pre-mined ("Raising the proof-of-work difficulty") if the chain needs to be harder. | No (changing it later means a new genesis) |
+| Dust and weight policy | Open. Dust threshold still assumes a 148-byte input; a v2 input is about 1 kvB. Worst-case per-block verification cost not benchmarked (BIP section 7). | No |
+| Dedicated destination / output type | Open. v2 addresses are `WitnessUnknown{2,Q}`; `getnewaddress`/`-addresstype` cannot produce them, `getnewmldsaaddress` does. | No |
+| Derivation spec | Open. Single-level HMAC scheme ("HD derivation") works and is deterministic, but is not a published path; `encryptwallet` rotates the root, so users must back up after encrypting. | No (document the backup rule for testers) |
+| `DataFromTransaction` attestation extraction | Open, minor. Re-signing a partially signed raw transaction does not recover an existing v2 attestation; PSBT and wallet signing are unaffected. | No |
+| Unit / functional / fuzz tests, BIP vectors | Open. Coverage is the shell scripts in `fork/test/` plus `qcoin-v2-selftest`; no Boost unit tests, Python functional tests, fuzz targets for the attestation parser or PSBT field, and the BIP's test-vector section is empty. | No for launch, yes before external review |
+| Review items | Open. Seeded keygen via a temporary liboqs RNG (`MlDsaKeygenFromSeed`) and the proprietary PSBT field should be checked against the final BIP text. | No |
+| Explorer and faucet exposure | Documented, not deployed. Run behind a TLS reverse proxy that sets `X-Forwarded-For`; keep RPC on localhost. | Operational, at launch |
 
 ## PSBT
 
@@ -619,7 +625,7 @@ What exists:
   and emits `0x51 || 1 || param_id || pk || sig`. The dummy creator emits a
   real-pk, zero-sig attestation so fee estimation and coin selection see a
   3735-byte witness.
-- **Consensus/policy plumbing (experimental builds).**
+- **Consensus/policy plumbing.**
   `PrecomputedTransactionData::Init` treats a spent `OP_2 <32>` output like
   taproot so the BIP 341 midstate is computed during block validation;
   `AreInputsStandard` accepts such inputs so the mempool does not reject the
@@ -759,40 +765,23 @@ A regtest wallet with `-walletsigscheme=mldsa44 -addresstype=bech32m-v2`
 receives to a `bcrt1z` address and spends it in a block that the node accepts
 with `QCOIN_ECDSA_FALLBACK=OFF` and commit 13d6b525 reverted.
 
-## Remaining gaps (both options unless noted)
+## Remaining gaps
 
-### Key material and storage
-- [~] ML-DSA keys are wallet-DB records (`walletdescriptormldsakey` /
-  `walletdescriptormldsackey`, per descriptor), encrypted with the wallet
-  passphrase, held in memory in a secure-allocator type and wiped after signing.
-- `SigningProvider` has no `GetMlDsaKey(...)`; the signer bypasses it.
-- No HD derivation. FIPS 204 keygen takes a 32-byte seed, so a BIP32-style
-  path to a seed is plausible, but it needs a spec.
+Everything that was listed here as missing for the key path (attestation
+encoding, commitment, v2 sighash and context, bech32m v2 addresses, `wpq()`,
+`SigningProvider` access to ML-DSA keys, wallet-DB storage, encryption, HD
+derivation, PSBT) is implemented and tested; see "Current status". What remains,
+with status, is the table under "Open items for public testnet". In short:
 
-### Descriptors and script
-- No descriptor fragment for an ML-DSA key (e.g. `mldsa(KEY)` / `wpq(...)`).
-- No `OutputType` for witness v2; `-addresstype`/`-changetype` cannot request it.
-- `solver.cpp` has no template for the v2 program (B) or for an ML-DSA pubkey
-  in legacy positions (A), so the wallet cannot recognise its own PQ outputs.
-- `OP_CHECKMLDSAVERIFY` (0xb3 under v2 leaf semantics) is not implemented (B).
-
-### Address format (B)
-- Witness v2 bech32m addresses (`bc1z...`, `bcrt1z...`). `key_io.cpp` encodes
-  v0 and v1 only.
-- Commitment `tagged_hash(param_id || pk_hash || merkle_root)` is not computed anywhere.
-
-### Witness v2 encoding and sighash (B)
-- Attestation field (`0x51 || n || entries`) serialisation/parsing.
-- v2 sighash extending BIP 341/342 with `param_id`, `pk_hash`, ctx `BIP-MLDSAv2`.
-  The current signer signs the raw legacy sighash with an empty context.
-- Canonical-encoding check on signatures (hint count <= omega); liboqs accepts
-  any valid encoding.
-
-### Policy, fees, tests
-- Dust threshold from the ML-DSA spend size (~940 vbytes per input for ML-DSA-44).
-- No unit, functional, or fuzz tests for any of the above. `test/` is excluded
-  from the current build (`-DBUILD_TESTS=OFF`).
-- Benchmark per-block ML-DSA verification cost (BIP section 7).
+- Consensus: canonical signature-encoding check; script path
+  (`OP_CHECKMLDSAVERIFY`, control block, leaf sighash); revert of the legacy
+  ECDSA-path routing.
+- Wallet and policy: dedicated `CTxDestination`/`OutputType` for v2; dust
+  threshold from the v2 input size; a published derivation path; attestation
+  extraction in `DataFromTransaction`.
+- Network: seed hosts, checkpoints/assumevalid once the chain has history.
+- Verification: unit, functional and fuzz tests; BIP test vectors; per-block
+  verification benchmark; review of the seeded keygen and PSBT field.
 
 ## How to exercise what exists
 
