@@ -72,7 +72,7 @@ kill $FP 2>/dev/null; wait $FP 2>/dev/null
 say "== CLI send (operator, no rate limit) =="
 S=$($FAUCET send "$A" --amount 0.25)
 check "$(printf '%s' "$S" | py 'import sys,json; d=json.load(sys.stdin); print(d["ok"], d["amount"])')" "True 0.25" "operator send to an already-paid address works (limits bypassed)"
-$CLI generatetoaddress 1 "$($T getnewaddress)" >/dev/null
+$CLI generatetoaddress 1 "$($T getnewaddress)" 2000000000 >/dev/null
 check "$($T getbalance)" "3.25000000" "tester balance 1.5 + 1.5 + 0.25"
 check "$($FAUCET send "$LEGACY" 2>/dev/null | py 'import sys,json; print(json.load(sys.stdin)["ok"])')" "False" "CLI send still enforces v2-only without --allow-any-address"
 check "$($FAUCET send "$LEGACY" --allow-any-address --amount 0.1 | py 'import sys,json; print(json.load(sys.stdin)["ok"])')" "True" "--allow-any-address pays a tq1q address"

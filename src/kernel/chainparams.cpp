@@ -699,10 +699,12 @@ public:
  * v2 ML-DSA deployment (DEPLOYMENT_MLDSA_V2) active from genesis. Addresses use
  * HRP "tq" (tq1q... legacy segwit, tq1z... ML-DSA witness v2).
  *
- * Proof of work is regtest-strength and non-retargeting so blocks can be produced
- * on demand with generatetoaddress during bring-up. Real difficulty parameters,
- * seed nodes, assumevalid/minimum chain work and checkpoints are pre-launch
- * decisions tracked in doc/WALLET-PQC.md ("Testnet launch").
+ * Proof of work: powLimit 000000ffff... (nBits 0x1e00ffff, 1/256 of Bitcoin
+ * difficulty 1, about 16.8 million hashes per block), retargeting on, testnet-style
+ * min-difficulty blocks allowed. Blocks can still be produced with generatetoaddress
+ * given a large maxtries (about a second each on a modern CPU); the genesis is no
+ * longer trivially re-minable. Seed nodes, assumevalid/minimum chain work and
+ * checkpoints remain pre-launch decisions tracked in doc/WALLET-PQC.md.
  */
 class CQtcTestParams : public CChainParams
 {
@@ -721,12 +723,12 @@ public:
         consensus.SegwitHeight = 0;
         consensus.MLDSAv2Height = 0; // Qcoin: witness v2 ML-DSA rules enforced from genesis
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        consensus.powLimit = uint256{"000000ffff000000000000000000000000000000000000000000000000000000"}; // nBits 0x1e00ffff
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
-        consensus.fPowAllowMinDifficultyBlocks = true;
+        consensus.fPowAllowMinDifficultyBlocks = true; // testnet-style: fall back to powLimit after 2x spacing
         consensus.enforce_BIP94 = true;
-        consensus.fPowNoRetargeting = true; // bring-up: mine on demand; TODO(launch): real PoW parameters
+        consensus.fPowNoRetargeting = false;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -750,9 +752,10 @@ public:
         m_assumed_chain_state_size = 1;
 
         const CScript genesisOutputScript = CScript() << "04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"_hex << OP_CHECKSIG;
-        genesis = CreateGenesisBlock("Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis", genesisOutputScript, 1761782400, 0, 0x207fffff, 1, 50 * COIN);
+        // Mined with fork/tools/mine-genesis.py --nbits 1e00ffff --time 1761782400 (lowest valid nonce).
+        genesis = CreateGenesisBlock("Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis", genesisOutputScript, 1761782400, 6739749, 0x1e00ffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60"});
+        assert(consensus.hashGenesisBlock == uint256{"0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437"});
         assert(genesis.hashMerkleRoot == uint256{"951bd97f5c87145947cf54618d588de8c47b88c329991c4e21502ef52046c4b6"});
 
         vFixedSeeds.clear(); // TODO(launch): add seed nodes before announcing the network

@@ -4,7 +4,7 @@
 Standard library only. Pays small amounts from a funded node wallet to tester
 addresses, by default only to witness v2 ML-DSA addresses (tq1z...). Three modes:
 
-  qtc-faucet.py fund  [--blocks 101]            mine coins to the faucet wallet (on-demand PoW chains only)
+  qtc-faucet.py fund  [--blocks 101]            mine coins to the faucet wallet (about 1 s/block on qtctest)
   qtc-faucet.py send  <address> [--amount 1.0]  one payment from the command line
   qtc-faucet.py serve [--port 8081]             HTTP: GET / (form), POST /claim, GET /api/claim?address=, GET /api/status
 
@@ -21,6 +21,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 DEFAULT_RPC_PORT = {"qtctest": 28332, "regtest": 18443, "signet": 38332, "testnet4": 48332, "test": 18332, "main": 8332}
+# generatetoaddress maxtries is a 32-bit TOTAL budget for the call; ~16.8M hashes per block are expected at
+# 1e00ffff and the RPC default of 1,000,000 never finds one. Mine one block per call with a 2e9 budget.
+GENERATE_MAXTRIES = 2_000_000_000
+MINING_RPC_TIMEOUT = 7200  # mining 101 blocks takes minutes on one core
 DATADIR_SUBDIR = {"qtctest": "qtctest", "regtest": "regtest", "signet": "signet", "testnet4": "testnet4", "test": "testnet3", "main": ""}
 
 
@@ -31,13 +35,13 @@ class Rpc:
     def for_wallet(self, name):
         return Rpc(self.url, self.auth, name)
 
-    def __call__(self, method, *params):
+    def __call__(self, method, *params, timeout=120):
         self._id += 1
         url = self.url + (f"/wallet/{self.wallet}" if self.wallet else "")
         body = json.dumps({"jsonrpc": "2.0", "id": self._id, "method": method, "params": list(params)}).encode()
         req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "Authorization": "Basic " + self.auth})
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 res = json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
             try:
@@ -86,10 +90,16 @@ class Faucet:
     def balance(self):
         return self.wallet("getbalance")
 
+    def mine(self, blocks, addr):
+        hashes = []
+        for _ in range(blocks):
+            hashes += self.node("generatetoaddress", 1, addr, GENERATE_MAXTRIES, timeout=MINING_RPC_TIMEOUT)
+        return hashes
+
     def fund_by_mining(self, blocks):
         addr = self.wallet("getnewaddress", "faucet-mining")
         params = self.node("getblockchaininfo")
-        hashes = self.node("generatetoaddress", blocks, addr)
+        hashes = self.mine(blocks, addr)
         return addr, len(hashes), params["chain"]
 
     # -- validation and policy
@@ -147,7 +157,7 @@ class Faucet:
             confirmed_in = None
             if self.args.confirm_blocks > 0:
                 mine_to = self.wallet("getnewaddress", "faucet-mining")
-                hashes = self.node("generatetoaddress", self.args.confirm_blocks, mine_to)
+                hashes = self.mine(self.args.confirm_blocks, mine_to)
                 confirmed_in = hashes[0] if hashes else None
             return {"ok": True, "txid": txid, "amount": self.args.amount, "address": address,
                     "address_type": "witness v2 ML-DSA" if info.get("witness_version") == 2 else info.get("type"),

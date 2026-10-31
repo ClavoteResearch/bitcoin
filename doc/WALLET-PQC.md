@@ -94,11 +94,11 @@ A dedicated chain, `-chain=qtctest`, exists for the public testnet. Its paramete
 | Network magic | `d1 54 43 54` ("QTCT" with the high bit set) |
 | P2P / RPC ports | 28333 / 28332 |
 | Address HRP | `tq` (legacy segwit `tq1q...`, ML-DSA witness v2 `tq1z...`); base58 and xpub prefixes as testnet |
-| Genesis | time 1761782400 (2026-10-30 00:00 UTC), nonce 0, nBits 0x207fffff, coinbase text "Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis" |
-| Genesis hash | `3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60` |
+| Genesis | time 1761782400 (2026-10-30 00:00 UTC), nonce 6739749, nBits 0x1e00ffff, coinbase text "Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis" |
+| Genesis hash | `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` |
 | Genesis merkle root | `951bd97f5c87145947cf54618d588de8c47b88c329991c4e21502ef52046c4b6` |
 | Deployments | BIP34/65/66/CSV at height 1, segwit and **mldsav2 at height 0** (active from genesis); testdummy never |
-| Proof of work | regtest-strength `powLimit`, non-retargeting, min-difficulty blocks allowed: blocks are produced on demand with `generatetoaddress` |
+| Proof of work | `powLimit` 000000ffff… (nBits 0x1e00ffff, about 16.8 million hashes per block), retargeting on, testnet-style min-difficulty blocks allowed; `generatetoaddress` works if `maxtries` is raised; it is a 32-bit total budget for the call, so mine one block per call with `maxtries` 2000000000 (about 3 s per block on one core) |
 | Seeds / checkpoints / assumevalid | none yet |
 
 Bring-up:
@@ -109,6 +109,7 @@ bitcoin-cli -chain=qtctest getblockchaininfo      # "chain": "qtctest"
 bitcoin-cli -chain=qtctest getdeploymentinfo      # deployments.mldsav2.active == true, height 0
 bitcoin-cli -chain=qtctest createwallet w
 bitcoin-cli -chain=qtctest -rpcwallet=w getnewmldsaaddress   # tq1z...
+bitcoin-cli -chain=qtctest generatetoaddress 1 <addr> 2000000000   # one block per call; maxtries is a 32-bit total budget
 ```
 
 Launch checklist (in order):
@@ -119,11 +120,10 @@ Launch checklist (in order):
    either statically linked or pinned (0.14.0) in the install instructions.
    Revert commit 13d6b525 (legacy ECDSA-path routing) and drop
    `QCOIN_ECDSA_FALLBACK` first, otherwise legacy spends are not a soft fork.
-2. **Genesis and PoW.** The genesis block above is final for a closed
-   `qtctest`. For an open testnet follow "Raising the proof-of-work difficulty":
-   pick `nBits`, mine a new genesis with `fork/tools/mine-genesis.py`, update
-   `CQtcTestParams` (a candidate at `1e00ffff` is already mined and listed), and
-   wipe data directories. Set `nMinimumChainWork`/`defaultAssumeValid` once a
+2. **Genesis and PoW.** The genesis above (`1e00ffff`) is the open-testnet
+   value. To change it again follow "Raising the proof-of-work difficulty" (a
+   difficulty-1 candidate is already mined and listed) and wipe data
+   directories. Set `nMinimumChainWork`/`defaultAssumeValid` once a
    few thousand blocks exist.
 3. **Seed nodes.** Run at least two always-on nodes, add their addresses to
    `vSeeds` (DNS) or `vFixedSeeds`, and open port 28333. Until then, peers use
@@ -216,10 +216,10 @@ checks the refusal paths and the operator CLI.
 
 ## Raising the proof-of-work difficulty
 
-`qtctest` currently uses a regtest-strength target so blocks (and the genesis) can
-be produced instantly; anyone can also re-mine that genesis. Before an open
-testnet the target has to be raised, and because the genesis block commits to
-`nBits`, a new genesis must be mined. `fork/tools/mine-genesis.py` does that and
+`qtctest` started with a regtest-strength target so blocks (and the genesis)
+could be produced instantly; it now runs at `1e00ffff` (see the table). Raising
+the target further means mining a new genesis, because the genesis block commits
+to `nBits`. `fork/tools/mine-genesis.py` does that and
 prints the exact lines to paste.
 
 ### How the numbers relate
@@ -239,14 +239,15 @@ prints the exact lines to paste.
 
 | `nBits` | expected hashes per block | genesis (message and time as in `qtctest`) | notes |
 |---|---|---|---|
-| `207fffff` (current regtest-strength) | ~2 | `3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60` | nonce 0, time 1761782400; instant; anyone can re-mine it |
-| `1e00ffff` (1/256 of Bitcoin difficulty 1) | ~16.8 million | `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` | nonce 6739749, time 1761782400, powLimit `000000ffff000000000000000000000000000000000000000000000000000000`; about 5 s per block on one modern CPU, a few seconds for the genesis with the helper |
+| `207fffff` (original bring-up value) | ~2 | `3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60` | nonce 0, time 1761782400; instant; anyone can re-mine it |
+| `1e00ffff` (**current**, 1/256 of Bitcoin difficulty 1) | ~16.8 million | `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` | nonce 6739749, time 1761782400, powLimit `000000ffff000000000000000000000000000000000000000000000000000000`; about 5 s per block on one modern CPU, a few seconds for the genesis with the helper |
 | `1d00ffff` (Bitcoin difficulty 1, testnet-like) | ~4.3 billion | `0000000086f43233c3863a31d6fd58b66fc47d6a21be15015bbb3e6768a13815` | nonce 207307031, time 1761782400, powLimit `00000000ffff0000000000000000000000000000000000000000000000000000`; mined in 55.5 s at ~4,314,179 H/s |
 
-The `1e00ffff` row is a reasonable open-testnet starting point: honest block
-production takes seconds of CPU, re-mining the genesis or grinding reorgs is no
-longer free, and `generatetoaddress` still works for bootstrapping if given a
-large `maxtries`. Difficulty 1 behaves like Bitcoin testnet and effectively
+`1e00ffff` is the value now in `CQtcTestParams`: honest block production takes
+about a second of CPU, re-mining the genesis or grinding reorgs is no longer
+free, and `generatetoaddress` still works for bootstrapping when `maxtries` is
+raised; it is a 32-bit total budget for the whole call, so mine one block per
+call with 2000000000 (the regtests and the faucet do exactly that). Difficulty 1 behaves like Bitcoin testnet and effectively
 requires an external miner.
 
 ### Procedure
@@ -274,8 +275,10 @@ requires an external miner.
    check) and `fork/test/test_mine_genesis.sh` (the committed-genesis check),
    and rebuild. Note that `generatetoaddress` defaults to `maxtries` 1,000,000,
    which is below the expected work at `1e00ffff`; the regtest must pass a
-   larger `maxtries` (for example `generatetoaddress 101 <addr> 100000000`) or
-   mine with an external miner via `getblocktemplate`.
+   larger `maxtries`; note it is a 32-bit total budget for the whole call and
+   about 16.8 million hashes per block are expected at `1e00ffff`, so mine one
+   block per call (`generatetoaddress 1 <addr> 2000000000` in a loop) or use an
+   external miner via `getblocktemplate`.
 5. Wipe every `qtctest` data directory: a new genesis is a new network.
 6. For an open network, publish the new parameters, re-run the launch
    checklist (seeds, explorer, faucet), and set `nMinimumChainWork` /

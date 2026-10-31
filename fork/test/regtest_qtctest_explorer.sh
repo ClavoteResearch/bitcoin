@@ -16,18 +16,21 @@ for k in sys.argv[1].split("."):
     d = d[int(k)] if k.lstrip("-").isdigit() else d[k]
 print(d)' "$1"; }
 get() { python3 -I -c 'import sys,urllib.request; print(urllib.request.urlopen(sys.argv[1], timeout=30).read().decode())' "http://127.0.0.1:$WEB$1"; }
+# generatetoaddress maxtries is a 32-bit total budget for the call (~16.8M hashes per block expected at 1e00ffff),
+# so mine one block per call with a 2e9 budget each.
+mine() { local n=$1 addr=$2 i; for ((i=0;i<n;i++)); do $CLI generatetoaddress 1 "$addr" 2000000000 >/dev/null; done; }
 has() { grep -c -- "$2" <<<"$1"; }
 
 "$BIN/bitcoind" -chain=qtctest -datadir="$D" -daemon -fallbackfee=0.0001 -rpcport=$RPCPORT -port=29433 -listen=0 -walletsigscheme=mldsa44 >/dev/null
 CLI="$BIN/bitcoin-cli -chain=qtctest -datadir=$D -rpcport=$RPCPORT"
 for i in $(seq 1 60); do $CLI getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done
 $CLI createwallet w >/dev/null; W="$CLI -rpcwallet=w"
-M=$($W getnewaddress); $CLI generatetoaddress 101 "$M" >/dev/null
+M=$($W getnewaddress); mine 101 "$M"
 A1=$($W getnewmldsaaddress x)
-FUND=$($W sendtoaddress "$A1" 7); $CLI generatetoaddress 1 "$M" >/dev/null
+FUND=$($W sendtoaddress "$A1" 7); mine 1 "$M"
 IN=$($W listunspent | py 'import sys,json; u=[x for x in json.load(sys.stdin) if x["address"]==sys.argv[1]][0]; print(json.dumps([{"txid":u["txid"],"vout":u["vout"]}]))' "$A1")
 SPEND=$($W -named send outputs="{\"$M\":3}" options="{\"inputs\":$IN,\"add_inputs\":false}" | jget txid)
-$CLI generatetoaddress 1 "$M" >/dev/null
+mine 1 "$M"
 H=$($CLI getblockcount)
 
 say "== start explorer =="
@@ -58,7 +61,7 @@ AP=$(get "/address/$A1")
 check "$(has "$AP" "witness v2 ML-DSA (key path)")" "1" "address page identifies a tq1z address"
 check "$(has "$AP" "Received (1)")$(has "$AP" "Spent (1)")$(has "$AP" "+7.00000000")$(has "$AP" "-7.00000000")" "1111" "address page: one receive, one spend, amounts"
 check "$(get "/api/address/$A1" | py 'import sys,json; d=json.load(sys.stdin); print(d["kind"], d["unspent_count"], len(d["received"]), len(d["spent"]), d["spent"][0]["witness"][:18])')" "witness v2 ML-DSA (key path) 0 1 1 ML-DSA attestation" "api/address JSON"
-check "$(get "/api/block/0" | jget hash)" "3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60" "api/block/0 returns the qtctest genesis"
+check "$(get "/api/block/0" | jget hash)" "0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437" "api/block/0 returns the qtctest genesis"
 MP=$(get /mempool); check "$(has "$MP" "Mempool (0)")" "1" "mempool page (empty)"
 $W sendtoaddress "$M" 1 >/dev/null
 MP=$(get /mempool); check "$(has "$MP" "Mempool (1)")" "1" "mempool page shows a pending tx"
