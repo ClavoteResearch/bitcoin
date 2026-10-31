@@ -157,6 +157,7 @@ std::list<SectionInfo> ArgsManager::GetUnrecognizedSections() const
         ChainTypeToString(ChainType::SIGNET),
         ChainTypeToString(ChainType::TESTNET),
         ChainTypeToString(ChainType::TESTNET4),
+        ChainTypeToString(ChainType::QTCTEST),
         ChainTypeToString(ChainType::MAIN),
     };
 

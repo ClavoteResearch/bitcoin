@@ -694,9 +694,106 @@ public:
     }
 };
 
+/**
+ * Qcoin testnet ("qtctest"): a public test chain whose consensus has the witness
+ * v2 ML-DSA deployment (DEPLOYMENT_MLDSA_V2) active from genesis. Addresses use
+ * HRP "tq" (tq1q... legacy segwit, tq1z... ML-DSA witness v2).
+ *
+ * Proof of work is regtest-strength and non-retargeting so blocks can be produced
+ * on demand with generatetoaddress during bring-up. Real difficulty parameters,
+ * seed nodes, assumevalid/minimum chain work and checkpoints are pre-launch
+ * decisions tracked in doc/WALLET-PQC.md ("Testnet launch").
+ */
+class CQtcTestParams : public CChainParams
+{
+public:
+    CQtcTestParams()
+    {
+        m_chain_type = ChainType::QTCTEST;
+        consensus.signet_blocks = false;
+        consensus.signet_challenge.clear();
+        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.BIP34Height = 1;
+        consensus.BIP34Hash = uint256{};
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
+        consensus.SegwitHeight = 0;
+        consensus.MLDSAv2Height = 0; // Qcoin: witness v2 ML-DSA rules enforced from genesis
+        consensus.MinBIP9WarningHeight = 0;
+        consensus.powLimit = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetSpacing = 10 * 60;
+        consensus.fPowAllowMinDifficultyBlocks = true;
+        consensus.enforce_BIP94 = true;
+        consensus.fPowNoRetargeting = true; // bring-up: mine on demand; TODO(launch): real PoW parameters
+
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].threshold = 1512; // 75%
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].period = 2016;
+
+        consensus.nMinimumChainWork = uint256{};
+        consensus.defaultAssumeValid = uint256{};
+
+        // Network magic "QTCT" with the high bit set on the first byte so it cannot collide with
+        // ASCII-only protocols; distinct from every other chain in this binary.
+        pchMessageStart[0] = 0xd1;
+        pchMessageStart[1] = 0x54;
+        pchMessageStart[2] = 0x43;
+        pchMessageStart[3] = 0x54;
+        nDefaultPort = 28333;
+        nPruneAfterHeight = 1000;
+        m_assumed_blockchain_size = 1;
+        m_assumed_chain_state_size = 1;
+
+        const CScript genesisOutputScript = CScript() << "04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"_hex << OP_CHECKSIG;
+        genesis = CreateGenesisBlock("Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis", genesisOutputScript, 1761782400, 0, 0x207fffff, 1, 50 * COIN);
+        consensus.hashGenesisBlock = genesis.GetHash();
+        assert(consensus.hashGenesisBlock == uint256{"3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60"});
+        assert(genesis.hashMerkleRoot == uint256{"951bd97f5c87145947cf54618d588de8c47b88c329991c4e21502ef52046c4b6"});
+
+        vFixedSeeds.clear(); // TODO(launch): add seed nodes before announcing the network
+        vSeeds.clear();
+
+        fDefaultConsistencyChecks = false;
+        m_is_mockable_chain = false;
+
+        m_assumeutxo_data = {};
+
+        chainTxData = ChainTxData{
+            .nTime = 1761782400,
+            .tx_count = 1,
+            .dTxRate = 0.001,
+        };
+
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
+        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
+        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
+
+        bech32_hrp = "tq";
+        silent_payments_hrp = "tqsp";
+
+        // Copied from Testnet4.
+        m_headers_sync_params = HeadersSyncParams{
+            .commitment_period = 275,
+            .redownload_buffer_size = 7017,
+        };
+    }
+};
+
 std::unique_ptr<const CChainParams> CChainParams::SigNet(const SigNetOptions& options)
 {
     return std::make_unique<const SigNetParams>(options);
+}
+
+std::unique_ptr<const CChainParams> CChainParams::QtcTest()
+{
+    return std::make_unique<const CQtcTestParams>();
 }
 
 std::unique_ptr<const CChainParams> CChainParams::RegTest(const RegTestOptions& options)
@@ -737,6 +834,7 @@ std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
     const auto testnet4_msg = CChainParams::TestNet4()->MessageStart();
     const auto regtest_msg = CChainParams::RegTest()->MessageStart();
     const auto signet_msg = CChainParams::SigNet()->MessageStart();
+    const auto qtctest_msg = CChainParams::QtcTest()->MessageStart();
 
     if (std::ranges::equal(message, mainnet_msg)) {
         return ChainType::MAIN;
@@ -748,6 +846,8 @@ std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
         return ChainType::REGTEST;
     } else if (std::ranges::equal(message, signet_msg)) {
         return ChainType::SIGNET;
+    } else if (std::ranges::equal(message, qtctest_msg)) {
+        return ChainType::QTCTEST;
     }
     return std::nullopt;
 }

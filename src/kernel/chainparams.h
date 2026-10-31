@@ -177,6 +177,8 @@ public:
     static std::unique_ptr<const CChainParams> TestNet(const TestNetOptions& options);
     static std::unique_ptr<const CChainParams> TestNet() { const TestNetOptions opts{}; return TestNet(opts); }
     static std::unique_ptr<const CChainParams> TestNet4(const TestNetOptions& options);
+    /** Qcoin public test chain ("qtctest"): witness v2 ML-DSA active from genesis. */
+    static std::unique_ptr<const CChainParams> QtcTest();
     static std::unique_ptr<const CChainParams> TestNet4() { const TestNetOptions opts{}; return TestNet4(opts); }
 
 protected:

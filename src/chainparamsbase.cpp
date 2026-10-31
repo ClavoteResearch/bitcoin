@@ -71,6 +71,8 @@ std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const ArgsManager& args,
         return std::make_unique<CBaseChainParams>(GetSignetDataDir(args), 38332);
     case ChainType::REGTEST:
         return std::make_unique<CBaseChainParams>("regtest", 18443);
+    case ChainType::QTCTEST:
+        return std::make_unique<CBaseChainParams>("qtctest", 28332); // Qcoin testnet RPC; P2P is 28333
     }
     assert(false);
 }

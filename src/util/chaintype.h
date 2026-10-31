@@ -15,6 +15,7 @@ enum class ChainType {
     SIGNET,
     REGTEST,
     TESTNET4,
+    QTCTEST, //!< Qcoin public test chain: witness v2 ML-DSA active from genesis
 };
 
 std::string ChainTypeToString(ChainType chain);

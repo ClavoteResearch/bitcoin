@@ -83,6 +83,64 @@ script-verify flag `SCRIPT_VERIFY_MLDSA_V2`:
   extras: the ML-DSA-87 `param_id` 0x7f and the `qcoin-v2-selftest` binary.
   The default build contains the complete v2 path.
 
+## Testnet launch
+
+A dedicated chain, `-chain=qtctest`, exists for the public testnet. Its parameters
+(`src/kernel/chainparams.cpp`, `CQtcTestParams`):
+
+| Parameter | Value |
+|---|---|
+| Chain name / data dir | `qtctest` (`<datadir>/qtctest`, config section `[qtctest]`) |
+| Network magic | `d1 54 43 54` ("QTCT" with the high bit set) |
+| P2P / RPC ports | 28333 / 28332 |
+| Address HRP | `tq` (legacy segwit `tq1q...`, ML-DSA witness v2 `tq1z...`); base58 and xpub prefixes as testnet |
+| Genesis | time 1761782400 (2026-10-30 00:00 UTC), nonce 0, nBits 0x207fffff, coinbase text "Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis" |
+| Genesis hash | `3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60` |
+| Genesis merkle root | `951bd97f5c87145947cf54618d588de8c47b88c329991c4e21502ef52046c4b6` |
+| Deployments | BIP34/65/66/CSV at height 1, segwit and **mldsav2 at height 0** (active from genesis); testdummy never |
+| Proof of work | regtest-strength `powLimit`, non-retargeting, min-difficulty blocks allowed: blocks are produced on demand with `generatetoaddress` |
+| Seeds / checkpoints / assumevalid | none yet |
+
+Bring-up:
+
+```bash
+bitcoind -chain=qtctest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
+bitcoin-cli -chain=qtctest getblockchaininfo      # "chain": "qtctest"
+bitcoin-cli -chain=qtctest getdeploymentinfo      # deployments.mldsav2.active == true, height 0
+bitcoin-cli -chain=qtctest createwallet w
+bitcoin-cli -chain=qtctest -rpcwallet=w getnewmldsaaddress   # tq1z...
+```
+
+Launch checklist (in order):
+
+1. **Binary.** Tag a release built from this branch with `QCOIN_WITNESS_V2_EXPERIMENTAL=OFF`
+   (the default build has the whole v2 path; the option only adds the non-BIP
+   ML-DSA-87 extras). Publish reproducible builds for Linux at least, with liboqs
+   either statically linked or pinned (0.14.0) in the install instructions.
+   Revert commit 13d6b525 (legacy ECDSA-path routing) and drop
+   `QCOIN_ECDSA_FALLBACK` first, otherwise legacy spends are not a soft fork.
+2. **Genesis and PoW.** The genesis block above is final for `qtctest`. Before
+   announcing, decide the proof-of-work regime: keep on-demand mining for a
+   closed test, or set `powLimit`/`fPowNoRetargeting=false` and re-mine a
+   genesis at that difficulty for an open one (the regtest-strength genesis is
+   trivially re-minable by anyone). Set `nMinimumChainWork`/`defaultAssumeValid`
+   once a few thousand blocks exist.
+3. **Seed nodes.** Run at least two always-on nodes, add their addresses to
+   `vSeeds` (DNS) or `vFixedSeeds`, and open port 28333. Until then, peers use
+   `-addnode`/`-connect`.
+4. **Explorer.** Any Bitcoin Core compatible explorer works for blocks and
+   transactions, but it must learn the `tq` HRP and that witness version 2
+   outputs are ML-DSA attestations (3735-byte witness, `OP_2 <Q>`); until then
+   they show as "unknown witness v2".
+5. **Faucet.** A faucet wallet on an always-on node, started with
+   `-walletsigscheme=mldsa44`, paying to both `tq1q` and `tq1z` addresses so
+   testers can exercise ML-DSA receives and spends. Fund it from on-demand
+   mining before the PoW regime changes.
+6. **Documentation for testers.** How to build with liboqs, how to start with
+   `-chain=qtctest`, how to get a `tq1z` address (`getnewmldsaaddress`), how to
+   read `getdeploymentinfo`, and what is still experimental (see "Testnet
+   readiness" below).
+
 ## Testnet readiness
 
 What a public Qcoin testnet (its own chain params, `-walletsigscheme=mldsa44`)
@@ -103,10 +161,10 @@ Done:
   (spend, multi, encrypt, hd, psbt, activation).
 
 Missing before a public testnet:
-- **Chain parameters**: a Qcoin testnet `CChainParams` (magic, ports, genesis,
-  seeds, bech32 HRP, `MLDSAv2Height`), and a decision on whether legacy
-  ECDSA-path routing (commit 13d6b525, `QCOIN_ECDSA_FALLBACK`) is reverted; it
-  must be for a soft-fork design.
+- **Chain parameters**: `qtctest` exists (see "Testnet launch") but still needs
+  seed nodes, a proof-of-work decision, checkpoints/assumevalid, and the revert of
+  legacy ECDSA-path routing (commit 13d6b525, `QCOIN_ECDSA_FALLBACK`), which a
+  soft-fork design requires.
 - **Canonical signature encoding**: FIPS 204 hint-count/canonical-hint check
   before `OQS_SIG_verify` (malleability, txid stability).
 - **Script path**: BIP sections 5 (`OP_CHECKMLDSAVERIFY`, control block, leaf
