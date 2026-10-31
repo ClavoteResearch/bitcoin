@@ -24,7 +24,7 @@ say "== seed node (listening) =="
 A="$BIN/bitcoin-cli -chain=qtctest -datadir=$DA -rpcport=$RA"
 wait_rpc "$A" || { say "[FAIL] seed node did not start"; exit 1; }
 check "$($A getnetworkinfo | py 'import sys,json; d=json.load(sys.stdin); print(d["networkactive"], [n["name"] for n in d["networks"] if n["reachable"]][0])')" "True ipv4" "seed node up and reachable on ipv4"
-$A createwallet seedw >/dev/null; MA=$($A -rpcwallet=seedw getnewaddress)
+$A createwallet seedw >/dev/null; MA=$($A -rpcwallet=seedw getnewmldsaaddress mine)
 mine 3 "$A" "$MA"
 check "$($A getblockcount)" "3" "seed mined 3 blocks"
 
@@ -48,7 +48,7 @@ check "$($B getblockcount) $($B getbestblockhash)" "3 $($A getbestblockhash)" "s
 check "$($B getdeploymentinfo | py 'import sys,json; print(json.load(sys.stdin)["deployments"]["mldsav2"]["active"])')" "True" "mldsav2 active on the second node too"
 
 say "== blocks flow the other way: peer mines, seed follows =="
-$B createwallet peerw >/dev/null; MB=$($B -rpcwallet=peerw getnewaddress)
+$B createwallet peerw >/dev/null; MB=$($B -rpcwallet=peerw getnewmldsaaddress mine)
 mine 2 "$B" "$MB"
 wait_height "$A" 5 || true
 check "$($A getblockcount) $($A getbestblockhash)" "5 $($B getbestblockhash)" "seed synced the peer's 2 blocks"

@@ -12,7 +12,9 @@ Qcoin: ML-DSA post-quantum fork (experimental)
 This tree is the `experimental-pqc` branch of **Qcoin**, a Bitcoin Core fork
 that adds post-quantum signatures with ML-DSA (FIPS 204, via
 [liboqs](https://github.com/open-quantum-safe/liboqs) 0.14). It is research
-code: no mainnet, no stability promises, test coins have no value.
+code: no mainnet, no stability promises, test coins have no value. Qcoin is a
+separate coin, not a Bitcoin soft fork: on its chains only ML-DSA (witness v2)
+outputs may carry value, and ordinary ECDSA outputs are consensus-invalid.
 
 **Start here:** [doc/WALLET-PQC.md](doc/WALLET-PQC.md) is the living status
 document. It has the build notes, the design decision, the activation rules,
@@ -20,6 +22,10 @@ the `qtctest` launch runbook, and the list of remaining gaps.
 
 Current state (October 2026):
 
+- **Value rule.** On regtest and `qtctest` every output with value must be a
+  witness v2 ML-DSA program; P2PKH, P2WPKH, P2TR and other ECDSA outputs are
+  rejected by consensus (`bad-txns-output-not-mldsa`) and the wallet refuses to
+  create them (`getnewaddress` points at `getnewmldsaaddress`; change is ML-DSA).
 - **Witness v2 (ML-DSA) outputs.** Address programs `OP_2 <Q>` commit to an
   ML-DSA-44 public key; the spend carries a `param_id || pk || sig`
   attestation in the witness, verified over the BIP341 sighash with the

@@ -113,6 +113,13 @@ struct Params {
     int SegwitHeight;
     /** Qcoin: block height from which witness v2 ML-DSA rules are enforced (INT_MAX = never). */
     int MLDSAv2Height;
+    /**
+     * Qcoin: value rule. When true and DEPLOYMENT_MLDSA_V2 is active, every output with
+     * nValue > 0 must be a witness v2 ML-DSA program; ordinary ECDSA outputs are
+     * consensus-invalid (fork/src/consensus/pq_value.h). False on the Bitcoin chains kept
+     * in this tree, true on the Qcoin chains (regtest, qtctest).
+     */
+    bool fMlDsaOnlyValue{false};
     /** Don't warn about unknown BIP 9 activations below this height.
      * This prevents us from warning about the CSV, segwit and taproot activations. */
     int MinBIP9WarningHeight;

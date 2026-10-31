@@ -19,7 +19,7 @@ CLI="$BIN/bitcoin-cli -regtest -datadir=$D -rpcport=$RPCPORT"
 for i in $(seq 1 60); do $CLI getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done
 $CLI createwallet miner >/dev/null; $CLI createwallet pq >/dev/null
 MINER="$CLI -rpcwallet=miner"; PQ="$CLI -rpcwallet=pq"
-M=$($MINER getnewaddress); $CLI generatetoaddress 101 "$M" >/dev/null
+M=$($MINER getnewmldsaaddress mine); $CLI generatetoaddress 101 "$M" >/dev/null
 PQADDR=$($PQ getaddressesbylabel mldsa | py 'import sys,json; print(list(json.load(sys.stdin).keys())[0])')
 $MINER sendtoaddress "$PQADDR" 10 >/dev/null; $CLI generatetoaddress 1 "$M" >/dev/null
 

@@ -41,7 +41,7 @@ say "== tester wallet gets a fresh tq1z address =="
 $CLI createwallet tester >/dev/null; T="$CLI -rpcwallet=tester"
 A=$($T getnewmldsaaddress faucet-claim)
 check "${A:0:4}" "tq1z" "tester address is witness v2"
-LEGACY=$($T getnewaddress)
+LEGACY=$($CLI deriveaddresses "$($CLI getdescriptorinfo "wpkh(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)" | python3 -I -c 'import sys,json; print(json.load(sys.stdin)["descriptor"])')" | jget 0)   # a P2WPKH address; the wallet no longer issues them
 
 say "== serve and claim over HTTP (payout confirmed by --confirm-blocks 1) =="
 $FAUCET serve --port $WEB --amount 1.5 --cooldown 3600 --confirm-blocks 1 > "$D/faucet.log" 2>&1 &
@@ -72,10 +72,10 @@ kill $FP 2>/dev/null; wait $FP 2>/dev/null
 say "== CLI send (operator, no rate limit) =="
 S=$($FAUCET send "$A" --amount 0.25)
 check "$(printf '%s' "$S" | py 'import sys,json; d=json.load(sys.stdin); print(d["ok"], d["amount"])')" "True 0.25" "operator send to an already-paid address works (limits bypassed)"
-$CLI generatetoaddress 1 "$($T getnewaddress)" 2000000000 >/dev/null
+$CLI generatetoaddress 1 "$($T getnewmldsaaddress mine)" 2000000000 >/dev/null
 check "$($T getbalance)" "3.25000000" "tester balance 1.5 + 1.5 + 0.25"
 check "$($FAUCET send "$LEGACY" 2>/dev/null | py 'import sys,json; print(json.load(sys.stdin)["ok"])')" "False" "CLI send still enforces v2-only without --allow-any-address"
-check "$($FAUCET send "$LEGACY" --allow-any-address --amount 0.1 | py 'import sys,json; print(json.load(sys.stdin)["ok"])')" "True" "--allow-any-address pays a tq1q address"
+check "$($FAUCET send "$LEGACY" --allow-any-address --amount 0.1 2>/dev/null | py 'import sys,json; d=json.load(sys.stdin); print(d["ok"], "cannot carry value" in d.get("error",""))')" "False True" "--allow-any-address cannot override the value rule: the wallet refuses the tq1q payment"
 $CLI stop >/dev/null
 [ $fail -eq 0 ] && say "QTCTEST FAUCET OK" || say "QTCTEST FAUCET FAILED"
 exit $fail

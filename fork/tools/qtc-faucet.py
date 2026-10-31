@@ -97,7 +97,7 @@ class Faucet:
         return hashes
 
     def fund_by_mining(self, blocks):
-        addr = self.wallet("getnewaddress", "faucet-mining")
+        addr = self.wallet("getnewmldsaaddress", "faucet-mining")
         params = self.node("getblockchaininfo")
         hashes = self.mine(blocks, addr)
         return addr, len(hashes), params["chain"]
@@ -156,7 +156,7 @@ class Faucet:
             self.save_state()
             confirmed_in = None
             if self.args.confirm_blocks > 0:
-                mine_to = self.wallet("getnewaddress", "faucet-mining")
+                mine_to = self.wallet("getnewmldsaaddress", "faucet-mining")
                 hashes = self.mine(self.args.confirm_blocks, mine_to)
                 confirmed_in = hashes[0] if hashes else None
             return {"ok": True, "txid": txid, "amount": self.args.amount, "address": address,

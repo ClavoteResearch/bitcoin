@@ -21,7 +21,16 @@ CLI="$BIN/bitcoin-cli -regtest -datadir=$D -rpcport=$RPCPORT"
 for i in $(seq 1 60); do $CLI getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done
 MINER="$CLI -rpcwallet=miner"; PQ="$CLI -rpcwallet=pq"
 $CLI createwallet miner >/dev/null; $CLI createwallet pq >/dev/null
-M=$($MINER getnewaddress); $CLI generatetoaddress 101 "$M" >/dev/null
+M=$($MINER getnewmldsaaddress mine)
+# Before activation v2 coins cannot be spent (the mempool treats v2 as a reserved witness version), so the miner mines
+# its pre-activation rewards to its own P2WPKH address. getnewaddress is refused on this chain, so derive it from the
+# wallet's wpkh() descriptor (listdescriptors + deriveaddresses); the coins are ismine and spendable pre-activation.
+EM=$($CLI deriveaddresses "$($MINER listdescriptors | py 'import sys,json; print([d["desc"] for d in json.load(sys.stdin)["descriptors"] if d["desc"].startswith("wpkh(") and not d["internal"]][0])')" "[0,0]" | jget 0)
+check "${EM:0:6} $($MINER getaddressinfo "$EM" | jget ismine)" "bcrt1q True" "miner's own P2WPKH address derived from its descriptor"
+$CLI generatetoaddress 101 "$EM" >/dev/null
+E=$($CLI deriveaddresses "$($CLI getdescriptorinfo "wpkh(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)" | python3 -I -c 'import sys,json; print(json.load(sys.stdin)["descriptor"])')" | jget 0)
+$CLI generatetoaddress 1 "$E" >/dev/null
+check "$($CLI getblockcount)" "102" "before activation an ECDSA (P2WPKH) coinbase is still consensus-valid (value rule gated on mldsav2)"
 
 say "== before activation (height $($CLI getblockcount), activates at $ACT) =="
 check "$($CLI getdeploymentinfo | py 'import sys,json; d=json.load(sys.stdin)["deployments"]["mldsav2"]; print(d["type"], d["active"], d["height"])')" "buried False $ACT" "getdeploymentinfo: mldsav2 buried, inactive, height $ACT"
@@ -42,6 +51,7 @@ say "== mine to activation height =="
 $CLI generatetoaddress $((ACT - $($CLI getblockcount))) "$M" >/dev/null
 check "$($CLI getblockcount)" "$ACT" "chain at height $ACT"
 check "$($CLI getdeploymentinfo | py 'import sys,json; d=json.load(sys.stdin)["deployments"]["mldsav2"]; print(d["active"])')" "True" "getdeploymentinfo: mldsav2 active"
+check "$($CLI generatetoaddress 1 "$E" 2>&1 | grep -c 'bad-txns-output-not-mldsa')" "1" "after activation an ECDSA coinbase is rejected (value rule active)"
 check "$($CLI testmempoolaccept "[\"$HEX\"]" | py 'import sys,json; print(json.load(sys.stdin)[0]["allowed"])')" "True" "the same signed transaction is now accepted by testmempoolaccept"
 TX=$($CLI sendrawtransaction "$HEX" 2>&1)
 check "${#TX}" "64" "sendrawtransaction accepts it after activation"

@@ -23,7 +23,7 @@ start_node ""
 CLI="$BIN/bitcoin-cli -regtest -datadir=$D -rpcport=$RPCPORT"
 MINER="$CLI -rpcwallet=miner"; PQ="$CLI -rpcwallet=pq"
 $CLI createwallet miner >/dev/null; $CLI createwallet pq >/dev/null
-M=$($MINER getnewaddress); $CLI generatetoaddress 101 "$M" >/dev/null
+M=$($MINER getnewmldsaaddress mine); $CLI generatetoaddress 101 "$M" >/dev/null
 
 say "== three addresses from one master =="
 A0=$($PQ getaddressesbylabel mldsa | py 'import sys,json; print(list(json.load(sys.stdin).keys())[0])')
@@ -36,7 +36,7 @@ check "$(printf '%s' "$HD" | py 'import sys,json; d=json.load(sys.stdin); m={k["
 check "$(derive 0) $(derive 1) $(derive 2)" "$A0 $A1 $A2" "derivemldsaaddress 0,1,2 reproduce the stored addresses from the master"
 check "$([ "$(derive 3)" != "$A0" ] && [ "$(derive 3)" != "$A1" ] && [ "$(derive 3)" != "$A2" ] && echo distinct)" "distinct" "index 3 derives a new, unused address"
 check "$(derive 1)" "$A1" "derivation is stable across calls"
-check "$($MINER getmldsahdinfo | py 'import sys,json; d=json.load(sys.stdin); print(d["next_index"], [k["index"] for k in d["keys"]])')" "1 [0]" "miner wallet has its own independent index space"
+check "$($MINER getmldsahdinfo | py 'import sys,json; d=json.load(sys.stdin); print(d["next_index"], sorted(k["index"] for k in d["keys"]))')" "2 [0, 1]" "miner wallet has its own independent index space (auto + mining address)"
 check "$([ "$($MINER derivemldsaaddress 0 | py 'import sys,json; print(json.load(sys.stdin)["address"])')" != "$A0" ] && echo different)" "different" "different wallets derive different keys at the same index"
 
 say "== fund all three, spend from two =="
@@ -54,10 +54,11 @@ check "$($PQ listunspent | py 'import sys,json; print(sorted(x["address"]==sys.a
 say "== restart: indices reload, derivation still matches =="
 $CLI stop >/dev/null; sleep 2
 start_node "-wallet=pq -wallet=miner"
-check "$($PQ getmldsahdinfo | py 'import sys,json; d=json.load(sys.stdin); print(d["next_index"], sorted(k["index"] for k in d["keys"]))')" "3 [0, 1, 2]" "HD indices reloaded from the database"
+# indices 3 and 4 are the change keys of the two spends above
+check "$($PQ getmldsahdinfo | py 'import sys,json; d=json.load(sys.stdin); print(d["next_index"], sorted(k["index"] for k in d["keys"]))')" "5 [0, 1, 2, 3, 4]" "HD indices reloaded from the database (3, 4 = change keys)"
 check "$(derive 2)" "$A2" "derivemldsaaddress 2 still matches after restart"
 A3=$($PQ getnewmldsaaddress hd3)
-check "$A3" "$(derive 3)" "getnewmldsaaddress continues at index 3 and matches the pre-derived address"
+check "$A3" "$(derive 5)" "getnewmldsaaddress continues at index 5 (after the change keys) and matches derivemldsaaddress 5"
 
 say "== encryption: derivation needs the unlocked root; pre-encryption keys stay spendable =="
 $PQ encryptwallet "$PASS" >/dev/null

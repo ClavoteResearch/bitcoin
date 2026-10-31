@@ -25,7 +25,7 @@ has() { grep -c -- "$2" <<<"$1"; }
 CLI="$BIN/bitcoin-cli -chain=qtctest -datadir=$D -rpcport=$RPCPORT"
 for i in $(seq 1 60); do $CLI getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done
 $CLI createwallet w >/dev/null; W="$CLI -rpcwallet=w"
-M=$($W getnewaddress); mine 101 "$M"
+M=$($W getnewmldsaaddress mine); mine 101 "$M"
 A1=$($W getnewmldsaaddress x)
 FUND=$($W sendtoaddress "$A1" 7); mine 1 "$M"
 IN=$($W listunspent | py 'import sys,json; u=[x for x in json.load(sys.stdin) if x["address"]==sys.argv[1]][0]; print(json.dumps([{"txid":u["txid"],"vout":u["vout"]}]))' "$A1")

@@ -5,6 +5,7 @@
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
+#include <chainparams.h>
 #include <common/args.h>
 #include <init.h>
 #include <interfaces/chain.h>
@@ -52,7 +53,7 @@ void WalletInit::AddWalletOptions(ArgsManager& argsman) const
                    ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
     argsman.AddArg("-consolidatefeerate=<amt>", strprintf("The maximum feerate (in %s/kvB) at which transaction building may use more inputs than strictly necessary so that the wallet's UTXO pool can be reduced (default: %s).", CURRENCY_UNIT, FormatMoney(DEFAULT_CONSOLIDATE_FEERATE)), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
     argsman.AddArg("-disablewallet", "Do not load the wallet and disable wallet RPC calls", ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
-    argsman.AddArg("-walletsigscheme=<scheme>", strprintf("Qcoin experimental: signature scheme for new wallet signatures (%s, default: \"%s\"). Non-ECDSA schemes are not yet spendable; see doc/WALLET-PQC.md.", qcoin::pqc::SigSchemeNames(), qcoin::pqc::SigSchemeName(qcoin::pqc::GetWalletSigScheme())), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
+    argsman.AddArg("-walletsigscheme=<scheme>", strprintf("Qcoin: ML-DSA parameter set for the wallet's witness v2 keys (%s). Default \"%s\" on Bitcoin chains; on ML-DSA-only chains (regtest, qtctest) the default is mldsa44 and ecdsa is rejected. See doc/WALLET-PQC.md.", qcoin::pqc::SigSchemeNames(), qcoin::pqc::SigSchemeName(qcoin::pqc::GetWalletSigScheme())), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
     argsman.AddArg("-discardfee=<amt>", strprintf("The fee rate (in %s/kvB) that indicates your tolerance for discarding change by adding it to the fee (default: %s). "
                                                                 "Note: An output is discarded if it is dust at this rate, but we will always discard up to the dust relay fee and a discard fee above that is limited by the fee estimate for the longest target",
                                                               CURRENCY_UNIT, FormatMoney(DEFAULT_DISCARD_FEE)), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
@@ -99,14 +100,22 @@ bool WalletInit::ParameterInteraction() const
         LogInfo("Parameter interaction: -blocksonly=1 -> setting -walletbroadcast=0");
     }
 
-    // Qcoin: select the wallet signature scheme (default ecdsa keeps legacy flows intact)
+    // Qcoin: select the wallet signature scheme. On ML-DSA-only chains (value rule) the wallet
+    // must be able to receive and give change in ML-DSA outputs, so ecdsa is not allowed there and
+    // the default becomes mldsa44. On Bitcoin chains the default stays ecdsa.
+    const bool mldsa_only = Params().GetConsensus().fMlDsaOnlyValue;
     if (gArgs.IsArgSet("-walletsigscheme")) {
         const std::string name = gArgs.GetArg("-walletsigscheme", "ecdsa");
         const auto scheme = qcoin::pqc::ParseSigScheme(name);
         if (!scheme) {
             return InitError(Untranslated(strprintf("Unknown -walletsigscheme=%s (expected one of: %s)", name, qcoin::pqc::SigSchemeNames())));
         }
+        if (mldsa_only && *scheme == qcoin::pqc::SigScheme::ECDSA) {
+            return InitError(Untranslated("-walletsigscheme=ecdsa is not allowed on this chain: value can only be held in ML-DSA (witness v2) outputs. Use mldsa44."));
+        }
         qcoin::pqc::SetWalletSigScheme(*scheme);
+    } else if (mldsa_only) {
+        qcoin::pqc::SetWalletSigScheme(qcoin::pqc::SigScheme::MLDSA44);
     }
     LogInfo("Qcoin: wallet signature scheme = %s", qcoin::pqc::SigSchemeName(qcoin::pqc::GetWalletSigScheme()));
 

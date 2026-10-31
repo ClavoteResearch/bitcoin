@@ -7,6 +7,8 @@
 
 #include <validation.h>
 
+#include "../fork/src/consensus/pq_value.h" // Qcoin: value rule (ML-DSA-only outputs)
+
 #include <arith_uint256.h>
 #include <chain.h>
 #include <checkqueue.h>
@@ -799,6 +801,16 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     // Coinbase is only valid in a block, not as a loose transaction
     if (tx.IsCoinBase())
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "coinbase");
+
+    // Qcoin value rule (consensus, mirrors ContextualCheckBlock): on fMlDsaOnlyValue chains
+    // with mldsav2 active, every output that carries value must be a witness v2 ML-DSA output.
+    if (m_active_chainstate.m_chainman.GetConsensus().fMlDsaOnlyValue &&
+        DeploymentActiveAfter(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_MLDSA_V2)) {
+        if (const auto bad = qcoin::pq::FirstNonMlDsaValueOutput(tx)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, qcoin::pq::REJECT_REASON,
+                                 strprintf("output %u carries value but is not a witness v2 ML-DSA output", unsigned(*bad)));
+        }
+    }
 
     // Rather not work on nonstandard transactions (unless -testnet/-regtest)
     std::string reason;
@@ -4163,6 +4175,18 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
     for (const auto& tx : block.vtx) {
         if (!IsFinalTx(*tx, nHeight, nLockTimeCutoff)) {
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-txns-nonfinal", "non-final transaction");
+        }
+    }
+
+    // Qcoin value rule: on fMlDsaOnlyValue chains, once mldsav2 is active, value may only sit in
+    // witness v2 ML-DSA outputs (coinbase included). Genesis is never checked here.
+    if (pindexPrev != nullptr && chainman.GetConsensus().fMlDsaOnlyValue &&
+        DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_MLDSA_V2)) {
+        for (const auto& tx : block.vtx) {
+            if (const auto bad = qcoin::pq::FirstNonMlDsaValueOutput(*tx)) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, qcoin::pq::REJECT_REASON,
+                                     strprintf("tx %s output %u carries value but is not a witness v2 ML-DSA output", tx->GetHash().ToString(), unsigned(*bad)));
+            }
         }
     }
 

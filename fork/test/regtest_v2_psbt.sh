@@ -22,7 +22,7 @@ CLI="$BIN/bitcoin-cli -regtest -datadir=$D -rpcport=$RPCPORT"
 MINER="$CLI -rpcwallet=miner"; SIGNER="$CLI -rpcwallet=signer"; WATCH="$CLI -rpcwallet=watch"
 $CLI createwallet miner >/dev/null; $CLI createwallet signer >/dev/null
 $CLI -named createwallet wallet_name=watch disable_private_keys=true blank=true >/dev/null
-M=$($MINER getnewaddress); $CLI generatetoaddress 101 "$M" >/dev/null
+M=$($MINER getnewmldsaaddress mine); $CLI generatetoaddress 101 "$M" >/dev/null
 
 say "== watch-only wallet imports the signer's wpq() descriptor =="
 A0=$($SIGNER getaddressesbylabel mldsa | py 'import sys,json; print(list(json.load(sys.stdin).keys())[0])')

@@ -13,8 +13,9 @@ the shell tests in `fork/test/` on the default build unless marked otherwise.
 | Piece | Location | State |
 |---|---|---|
 | Witness v2 output (Option B) | `fork/src/script/witness_v2.h`, `script/interpreter.cpp` (`VerifyWitnessProgram`) | **Working.** `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| SHA256(pk))`. The spend's last witness element is the attestation `0x51 \|\| n \|\| param_id \|\| pk \|\| sig`; the interpreter checks the commitment and verifies the ML-DSA signature over `param_id \|\| pk_hash \|\| sighash` (BIP341 sighash, SIGHASH_DEFAULT) with context `BIP-MLDSAv2`. Param id `0x01` = ML-DSA-44 (3735-byte attestation). Signatures must be in FIPS 204 canonical hint encoding (`IsCanonicalMlDsaSignature`, checked before liboqs). Errors `SCRIPT_ERR_MLDSA_ATTESTATION` / `SCRIPT_ERR_MLDSA_SIG_ENCODING` / `SCRIPT_ERR_MLDSA_SIG`. Tests: `qcoin-v2-selftest`, `regtest_v2_canonical.sh`. |
+| Value rule (ML-DSA-only) | `fork/src/consensus/pq_value.h`, `validation.cpp`, `Consensus::Params::fMlDsaOnlyValue` | **Working.** On regtest and `qtctest`, once mldsav2 is active every output with value must be `OP_2 <32>`; ordinary ECDSA outputs (P2PKH, P2WPKH, P2TR, bare multisig, ...) are consensus-invalid in blocks (coinbase included) and in the mempool (`bad-txns-output-not-mldsa`). Zero-value outputs are unrestricted (OP_RETURN, witness commitment). Wallet: `getnewaddress`/`getrawchangeaddress` refuse, recipients and custom change must be v2, change is derived as a fresh ML-DSA key, `-walletsigscheme` defaults to mldsa44 and `ecdsa` is rejected. Qcoin is therefore a separate coin, not a Bitcoin soft fork; the Bitcoin chain parameters still in the tree keep Bitcoin's rules. Test: `regtest_pq_only.sh`. |
 | Activation | `Consensus::DEPLOYMENT_MLDSA_V2` ("mldsav2"), `SCRIPT_VERIFY_MLDSA_V2`, `validation.cpp` | **Working.** Buried deployment: height 0 on regtest (override `-testactivationheight=mldsav2@N`) and `qtctest`; never on mainnet/testnet/signet. Before activation v2 inputs are anyone-can-spend for blocks and rejected by the mempool (`mempool-script-verify-flag-failed`); after it the flag is enforced in blocks and policy, and `AreInputsStandard` accepts v2. Shown by `getdeploymentinfo`. Test: `regtest_v2_activation.sh`. |
-| Legacy ECDSA path | `script/interpreter.cpp` (`VerifyECDSASignature`) | **Upstream again.** The first experiment (commit 13d6b525) routed every legacy ECDSA check through an ML-DSA-87 stub with a secp256k1 fallback; that routing, `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. Legacy inputs never touch liboqs, so the v2 rules are a genuine soft fork. Checked by the P2WPKH spend in `regtest_qtctest.sh`. |
+| Legacy ECDSA path | `script/interpreter.cpp` (`VerifyECDSASignature`) | **Upstream again.** The first experiment (commit 13d6b525) routed every legacy ECDSA check through an ML-DSA-87 stub with a secp256k1 fallback; that routing, `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. Legacy inputs never touch liboqs. What makes Qcoin incompatible with Bitcoin is the value rule above, not the script rules. |
 | ML-DSA primitives | `fork/src/pqc/pqc.{h,cpp}` (library `qcoin_pqc`) | **Working.** liboqs 0.14 wrappers: keygen (random and from a 32-byte seed via a temporary custom RNG under a mutex), sign/verify with context, HD master/child seed derivation, `SecureBytes` on Core's `secure_allocator`, `WipeSecret`. ML-DSA-44 and ML-DSA-87. |
 | Wallet scheme switch | `-walletsigscheme=<ecdsa\|mldsa44\|mldsa87>` (`wallet/init.cpp`) | **Working.** Default `ecdsa` leaves the wallet upstream-identical. `mldsa44` makes wallet creation also generate an ML-DSA key and import a `wpq()` descriptor. `mldsa87` only in experimental builds (param id `0x7f`, non-BIP). |
 | Addresses and descriptors | `script/descriptor.cpp` (`WpqDescriptor`), `wallet/rpc/addresses.cpp` | **Working.** `wpq(HEXPK)` emits `OP_2 <Q>`; `InferDescriptor` maps `OP_2 <Q>` back to `wpq()` (needed for fee estimation). RPCs `getnewmldsaaddress [label]`, `derivemldsaaddress <index>`, `getmldsahdinfo`. Addresses are bech32m witness version 2: `bcrt1z...` (regtest), `tq1z...` (qtctest), `bc1z...` (mainnet, never active). Destination type is still `WitnessUnknown{2,Q}` (no dedicated `OutputType`). |
@@ -70,6 +71,46 @@ listed under "Testnet readiness" and "Remaining gaps".
 - No RPC exposes the keys; `listdescriptors true` cannot print a private form
   of `wpq()`.
 
+## Value rule: Qcoin is a separate coin
+
+Since commit `9f7b45d` the script rules alone would have made witness v2 a soft
+fork over Bitcoin. That is no longer the goal: Qcoin is its own post-quantum
+coin, and ordinary ECDSA outputs must not be able to hold value. The rule
+(`fork/src/consensus/pq_value.h`):
+
+- On chains with `Consensus::Params::fMlDsaOnlyValue` (regtest, `qtctest`, and
+  any future Qcoin mainnet), once `mldsav2` is active, **every output with
+  `nValue > 0` must be a witness v2 program** `OP_2 <32 bytes>`. This applies to
+  coinbase outputs too, so mining rewards go to `tq1z`/`bcrt1z` addresses.
+- Zero-value outputs are unrestricted, so OP_RETURN data and the segwit witness
+  commitment keep working. Inputs are unrestricted; after activation the only
+  ECDSA coins that can exist are zero-value ones or coins created before
+  activation (regtest with `-testactivationheight`).
+- Enforcement: `ContextualCheckBlock` (blocks) and `MemPoolAccept::PreChecks`
+  (mempool) both fail with `bad-txns-output-not-mldsa`. The mempool check runs
+  before standardness, so such a transaction is consensus-invalid, which
+  subsumes being non-standard.
+- Wallet: `getnewaddress` and `getrawchangeaddress` refuse with a pointer to
+  `getnewmldsaaddress`; `CreateTransaction` (sendtoaddress, send, sendmany,
+  fundrawtransaction, walletcreatefundedpsbt) refuses any recipient or custom
+  change address that is not v2 with "Ordinary (ECDSA) outputs cannot carry
+  value on this chain"; change is derived as a fresh HD ML-DSA key stored under
+  the label `change`; `-walletsigscheme` defaults to `mldsa44` on these chains
+  and `-walletsigscheme=ecdsa` is an init error.
+- The Bitcoin chain parameters kept in the tree (mainnet, testnet, signet) have
+  `fMlDsaOnlyValue = false` and `mldsav2` never active, so the binary still
+  validates those chains with Bitcoin's rules.
+- This is a hard fork of the existing `qtctest` chain: blocks whose coinbase
+  paid `tq1q` are now invalid, so every `qtctest` data directory must be wiped.
+  The genesis block is unchanged (it is never run through `ContextualCheckBlock`
+  and its output is unspendable).
+
+Gaps: change keys are created even when no change is needed and are not reused
+(one 3.9 KB record per transaction); `sendall` bypasses `CreateTransaction` and
+only fails at the mempool; a dedicated standardness reason is not emitted
+because the consensus check fires first. Test: `fork/test/regtest_pq_only.sh`;
+`regtest_v2_activation.sh` shows the rule switching on with the deployment.
+
 ## Activation: DEPLOYMENT_MLDSA_V2
 
 The witness v2 path is no longer gated by a compile-time define. It is a
@@ -123,7 +164,7 @@ bitcoin-cli -chain=qtctest getnetworkinfo | grep -A1 '"localaddresses"'   # shou
 
 # 3. produce the first blocks (one block per call; about 3 s each at 1e00ffff)
 bitcoin-cli -chain=qtctest createwallet faucet
-M=$(bitcoin-cli -chain=qtctest -rpcwallet=faucet getnewaddress)
+M=$(bitcoin-cli -chain=qtctest -rpcwallet=faucet getnewmldsaaddress mine)   # tq1z: only ML-DSA outputs may hold value
 for i in $(seq 1 110); do bitcoin-cli -chain=qtctest generatetoaddress 1 "$M" 2000000000 > /dev/null; done
 ```
 
@@ -446,6 +487,8 @@ Done:
 - Chain and tools: `qtctest` with its genesis and 1e00ffff target, example
   config, two-node test, explorer, faucet, genesis helper, launch runbook
   ("Public launch").
+- Value rule: only ML-DSA outputs may carry value (see "Value rule"); the
+  wallet cannot create ordinary outputs.
 
 ### Open items for public testnet
 
@@ -457,6 +500,7 @@ new genesis or a soft fork of the testnet.
 
 | Item | Status | Before announcing? |
 |---|---|---|
+| Value rule (separate coin) | **Done.** `fMlDsaOnlyValue` on regtest and `qtctest`; ordinary ECDSA outputs with value are consensus-invalid and the wallet refuses to create them. Existing `qtctest` data directories are invalid and must be wiped before relaunch. | Yes (done) |
 | Legacy ECDSA-path routing | **Done.** `VerifyECDSASignature` is upstream `pubkey.Verify` again; `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. `regtest_qtctest.sh` confirms an ordinary P2WPKH spend next to a v2 spend. | Yes (done) |
 | Canonical ML-DSA signature encoding | **Done.** `qcoin::v2::IsCanonicalMlDsaSignature` re-implements the FIPS 204 HintBitUnpack acceptance rules (cumulative hint counts non-decreasing and at most omega, strictly increasing indices per polynomial, zero padding) and runs before liboqs; failures are `SCRIPT_ERR_MLDSA_SIG_ENCODING`. Consensus therefore does not depend on a library version's strictness. `regtest_v2_canonical.sh` re-encodes a real spend's hint area and shows the node rejects it while the original confirms. | Yes (done) |
 | Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
@@ -640,7 +684,7 @@ Regtest flow (see the `fork/test/regtest_v2_*.sh` scripts: spend, multi, encrypt
 ```bash
 bitcoind -regtest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
 bitcoin-cli -regtest createwallet miner;  bitcoin-cli -regtest createwallet pq
-M=$(bitcoin-cli -regtest -rpcwallet=miner getnewaddress); bitcoin-cli -regtest generatetoaddress 101 $M
+M=$(bitcoin-cli -regtest -rpcwallet=miner getnewmldsaaddress mine); bitcoin-cli -regtest generatetoaddress 101 $M
 PQ=$(bitcoin-cli -regtest -rpcwallet=pq getaddressesbylabel mldsa | jq -r 'keys[0]')   # bcrt1z... (created with the wallet)
 PQ2=$(bitcoin-cli -regtest -rpcwallet=pq getnewmldsaaddress "second")                 # another bcrt1z..., fresh key
 bitcoin-cli -regtest -rpcwallet=miner sendtoaddress $PQ 10; bitcoin-cli -regtest generatetoaddress 1 $M

@@ -17,7 +17,8 @@ start_node() { "$BIN/bitcoind" -regtest -datadir="$D" -daemon -fallbackfee=0.000
 txid_of() { py 'import sys,json
 try: print(json.load(sys.stdin).get("txid",""))
 except Exception: print("")'; }
-# `send` on a locked wallet cannot sign, so it returns an unsigned PSBT (complete=false, no txid) instead of broadcasting.
+# `send` on a locked wallet fails early: the ML-DSA change address cannot be derived while locked (value rule), so the
+# RPC returns an error mentioning the lock instead of an unsigned PSBT.
 locked_send_result() { py 'import sys,json
 try:
     d=json.load(sys.stdin); print(d.get("complete"), "txid" in d)
@@ -33,7 +34,7 @@ start_node ""
 CLI="$BIN/bitcoin-cli -regtest -datadir=$D -rpcport=$RPCPORT"
 MINER="$CLI -rpcwallet=miner"; PQ="$CLI -rpcwallet=pq"
 $CLI createwallet miner >/dev/null; $CLI createwallet pq >/dev/null
-M=$($MINER getnewaddress); $CLI generatetoaddress 101 "$M" >/dev/null
+M=$($MINER getnewmldsaaddress mine); $CLI generatetoaddress 101 "$M" >/dev/null
 A0=$($PQ getaddressesbylabel mldsa | py 'import sys,json; print(list(json.load(sys.stdin).keys())[0])')
 $MINER sendtoaddress "$A0" 5 >/dev/null; $CLI generatetoaddress 1 "$M" >/dev/null
 check "$($PQ getbalance)" "5.00000000" "pq holds a 5-coin v2 output before encryption"
@@ -41,7 +42,7 @@ check "$($PQ getbalance)" "5.00000000" "pq holds a 5-coin v2 output before encry
 say "== encrypt =="
 $PQ encryptwallet "$PASS" >/dev/null
 check "$($PQ getwalletinfo | py 'import sys,json; print(json.load(sys.stdin)["unlocked_until"])')" "0" "wallet is encrypted and locked"
-check "$($PQ -named send outputs="{\"$M\":1}" options="{\"inputs\":$($PQ listunspent | one_input "$A0"),\"add_inputs\":false}" 2>&1 | locked_send_result)" "False False" "spend while locked cannot sign (unsigned PSBT, nothing broadcast)"
+check "$($PQ -named send outputs="{\"$M\":1}" options="{\"inputs\":$($PQ listunspent | one_input "$A0"),\"add_inputs\":false}" 2>&1 | grep -c -i 'locked')" "1" "spend while locked is refused (ML-DSA change cannot be derived while locked; nothing broadcast)"
 check "$($CLI getrawmempool | py 'import sys,json; print(len(json.load(sys.stdin)))')" "0" "mempool empty after locked spend attempt"
 check "$($PQ getnewmldsaaddress 2>&1 | grep -c -i 'locked')" "1" "getnewmldsaaddress while locked is refused"
 check "$($PQ walletpassphrase "wrong passphrase" 60 2>&1 | grep -c -i 'incorrect')" "1" "wrong passphrase rejected (CheckDecryptionKey covers ML-DSA)"
@@ -60,17 +61,18 @@ $PQ walletlock >/dev/null
 
 say "== on-disk records (node stopped) =="
 $CLI stop >/dev/null; sleep 2
-# 3 encrypted: the original key (converted), the key encryptwallet created when it re-ran descriptor setup with a fresh
-# seed (Core does this for descriptor wallets; our hook adds an ML-DSA key too), and the getnewmldsaaddress key.
-check "$(db_counts)" "0 3" "wallet.dat: 0 plaintext ML-DSA records, 3 encrypted"
-check "$(py 'import sys,sqlite3; c=sqlite3.connect(sys.argv[1]); print(sum(1 for (k,) in c.execute("select key from main") if b"wpq(" in k or b"wpq(" in bytes(c.execute("select value from main where key=?",(k,)).fetchone()[0])))' "$D/regtest/wallets/pq/wallet.dat")" "3" "wallet.dat: 3 wpq() descriptors"
+# 4 encrypted: the original key (converted), the key encryptwallet created when it re-ran descriptor setup with a fresh
+# seed (Core does this for descriptor wallets; our hook adds an ML-DSA key too), the change key of the spend after
+# unlock, and the getnewmldsaaddress key.
+check "$(db_counts)" "0 4" "wallet.dat: 0 plaintext ML-DSA records, 4 encrypted"
+check "$(py 'import sys,sqlite3; c=sqlite3.connect(sys.argv[1]); print(sum(1 for (k,) in c.execute("select key from main") if b"wpq(" in k or b"wpq(" in bytes(c.execute("select value from main where key=?",(k,)).fetchone()[0])))' "$D/regtest/wallets/pq/wallet.dat")" "4" "wallet.dat: 4 wpq() descriptors"
 check "$(grep -c 'Qcoin: loaded' "$D/regtest/debug.log")" "0" "sanity: no load lines yet from a restart"
 
 say "== restart: encrypted records load, unlock, spend from the new key =="
 start_node "-wallet=pq -wallet=miner"
-check "$(grep -c 'ML-DSA key(s) for descriptor .* (0 plaintext, 1 encrypted)' "$D/regtest/debug.log")" "3" "all three pq wpq() descriptors loaded one encrypted ML-DSA key"
+check "$(grep -c 'ML-DSA key(s) for descriptor .* (0 plaintext, 1 encrypted)' "$D/regtest/debug.log")" "4" "all four pq wpq() descriptors loaded one encrypted ML-DSA key"
 check "$($PQ getaddressinfo "$A1" | py 'import sys,json; d=json.load(sys.stdin); print(d["ismine"], d["solvable"])')" "True True" "A1 ismine and solvable after restart (public key available while locked)"
-check "$($PQ -named send outputs="{\"$M\":1}" options="{\"inputs\":$($PQ listunspent | one_input "$A1"),\"add_inputs\":false}" 2>&1 | locked_send_result)" "False False" "spend while locked after restart cannot sign (unsigned PSBT)"
+check "$($PQ -named send outputs="{\"$M\":1}" options="{\"inputs\":$($PQ listunspent | one_input "$A1"),\"add_inputs\":false}" 2>&1 | grep -c -i 'locked')" "1" "spend while locked after restart is refused"
 $PQ walletpassphrase "$PASS" 300 >/dev/null
 TX1=$($PQ -named send outputs="{\"$M\":1}" options="{\"inputs\":$($PQ listunspent | one_input "$A1"),\"add_inputs\":false}" 2>&1 | txid_of)
 check "${#TX1}" "64" "spend from A1 after restart+unlock returned a txid"

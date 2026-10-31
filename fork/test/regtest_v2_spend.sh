@@ -16,7 +16,7 @@ for i in $(seq 1 60); do $CLI getblockchaininfo >/dev/null 2>&1 && break; sleep 
 MINER="$CLI -rpcwallet=miner"; PQ="$CLI -rpcwallet=pq"
 
 $CLI createwallet miner >/dev/null; $CLI createwallet pq >/dev/null
-M=$($MINER getnewaddress)
+M=$($MINER getnewmldsaaddress mine)
 $CLI generatetoaddress 101 "$M" >/dev/null
 
 say "== v2 address =="
@@ -46,13 +46,15 @@ if [ "${#SPEND}" = "64" ]; then
   $CLI generatetoaddress 1 "$M" >/dev/null
   check "$($PQ gettransaction "$SPEND" | python3 -I -c 'import sys,json; print(json.load(sys.stdin)["confirmations"])')" "1" "spend confirmed in a block (consensus accepted)"
   check "$($CLI getblockcount)" "103" "chain height 103"
-  say "pq balance now: $($PQ getbalance) (10 - 5 - fee, change returned to a P2WPKH address)"
+  say "pq balance now: $($PQ getbalance) (10 - 5 - fee, change returned to a fresh ML-DSA address)"
+  check "$(printf '%s' "$RAW" | python3 -I -c 'import sys,json; o=json.load(sys.stdin)["vout"]; print(len(o), all(v["scriptPubKey"]["hex"].startswith("5220") for v in o))')" "2 True" "payment and change outputs are both OP_2 <32>"
 fi
 
-say "== ECDSA still works in the same wallet (P2WPKH change / miner spends) =="
-check "${#M}" "44" "miner address is bech32 P2WPKH"
-T=$($MINER sendtoaddress "$($MINER getnewaddress)" 1 2>&1) || true
-check "${#T}" "64" "miner ECDSA spend succeeds"
+say "== value rule: ordinary (ECDSA) outputs are refused =="
+check "${M:0:6}" "bcrt1z" "miner mines to an ML-DSA address"
+check "$($MINER getnewaddress 2>&1 | grep -c 'Use getnewmldsaaddress')" "1" "getnewaddress refuses"
+E=$($CLI deriveaddresses "$($CLI getdescriptorinfo "wpkh(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)" | python3 -I -c 'import sys,json; print(json.load(sys.stdin)["descriptor"])')" | python3 -I -c 'import sys,json; print(json.load(sys.stdin)[0])')
+check "$($MINER sendtoaddress "$E" 1 2>&1 | grep -c 'cannot carry value')" "1" "paying a P2WPKH address is refused with a clear error"
 
 say "== relevant log lines =="
 grep -E "Qcoin: (imported|built|generated)" "$D/regtest/debug.log" | sed 's/^[^ ]* //' | head -6

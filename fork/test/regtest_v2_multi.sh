@@ -21,7 +21,7 @@ start_node ""
 CLI="$BIN/bitcoin-cli -regtest -datadir=$D -rpcport=$RPCPORT"
 MINER="$CLI -rpcwallet=miner"; PQ="$CLI -rpcwallet=pq"
 $CLI createwallet miner >/dev/null; $CLI createwallet pq >/dev/null
-M=$($MINER getnewaddress); $CLI generatetoaddress 101 "$M" >/dev/null
+M=$($MINER getnewmldsaaddress mine); $CLI generatetoaddress 101 "$M" >/dev/null
 
 say "== addresses =="
 A0=$($PQ getaddressesbylabel mldsa | py 'import sys,json; print(list(json.load(sys.stdin).keys())[0])')
@@ -34,7 +34,7 @@ for a in "$A1" "$A2"; do
   check "$($PQ getaddressinfo "$a" | py 'import sys,json; d=json.load(sys.stdin); print(d["ismine"], d["solvable"], d["desc"][:4], d["labels"][0])')" "True True wpq( $([ "$a" = "$A1" ] && echo pq1 || echo pq2)" "pq getaddressinfo ${a:0:12}...: ismine solvable wpq label"
 done
 check "$($PQ listdescriptors | py 'import sys,json; print(sum(1 for d in json.load(sys.stdin)["descriptors"] if d["desc"].startswith("wpq(")))')" "3" "pq has three wpq() descriptors"
-check "$($MINER listdescriptors | py 'import sys,json; print(sum(1 for d in json.load(sys.stdin)["descriptors"] if d["desc"].startswith("wpq(")))')" "1" "miner has one wpq() descriptor"
+check "$($MINER listdescriptors | py 'import sys,json; print(sum(1 for d in json.load(sys.stdin)["descriptors"] if d["desc"].startswith("wpq(")))')" "2" "miner has two wpq() descriptors (auto + mining address)"
 
 say "== wallet-scoped keys =="
 check "$(find "$D/regtest/wallets" -name mldsa_keys.dat | wc -l)" "0" "no external mldsa_keys.dat files (keys live in wallet.dat)"
@@ -64,17 +64,16 @@ check "$($PQ listunspent | py 'import sys,json; print(sorted(x["address"]==sys.a
 say "== restart node, reload wallets from the database, spend from A2 =="
 $CLI stop >/dev/null; sleep 2
 start_node "-wallet=pq -wallet=miner"
-check "$(grep -c 'Qcoin: loaded 1 ML-DSA key(s) for descriptor' "$D/regtest/debug.log")" "4" "4 ML-DSA key records loaded from the two wallet databases (3 pq + 1 miner)"
+# pq: A0, A1, A2 + 1 change key (TX1). miner: auto + mine + 3 change keys (sendtoaddress x3) + 1 change key (TXM).
+check "$(grep -c 'Qcoin: loaded 1 ML-DSA key(s) for descriptor' "$D/regtest/debug.log")" "10" "10 ML-DSA key records loaded from the two wallet databases (4 pq + 6 miner, change keys included)"
 check "$($PQ getaddressinfo "$A2" | py 'import sys,json; d=json.load(sys.stdin); print(d["ismine"], d["solvable"])')" "True True" "A2 still ismine and solvable after restart"
 TX2=$($PQ -named send outputs="{\"$M\":1}" options="{\"inputs\":$($PQ listunspent | one_input "$A2"),\"add_inputs\":false}" 2>&1 | txid_of)
 check "${#TX2}" "64" "pq send from A2 after restart returned a txid"
 if [ "${#TX2}" = "64" ]; then $CLI generatetoaddress 1 "$M" >/dev/null; check "$($PQ gettransaction "$TX2" | py 'import sys,json; print(json.load(sys.stdin)["confirmations"])')" "1" "A2 spend confirmed"; fi
 
-say "== negative: RPC refused when scheme is ecdsa =="
+say "== negative: the ecdsa scheme is refused at startup on this chain (value rule) =="
 $CLI stop >/dev/null; sleep 2
-"$BIN/bitcoind" -regtest -datadir="$D" -daemon -rpcport=$RPCPORT -port=18856 -listen=0 -wallet=pq >/dev/null
-for i in $(seq 1 60); do $CLI getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done
-check "$($PQ getnewmldsaaddress 2>&1 | grep -c 'scheme is ecdsa')" "1" "getnewmldsaaddress errors under ecdsa scheme"
-$CLI stop >/dev/null
+ERR=$("$BIN/bitcoind" -regtest -datadir="$D" -rpcport=$RPCPORT -port=18856 -listen=0 -wallet=pq -walletsigscheme=ecdsa 2>&1); RC=$?
+check "$RC $(printf '%s' "$ERR" | grep -c 'not allowed on this chain')" "1 1" "-walletsigscheme=ecdsa is an init error"
 [ $fail -eq 0 ] && say "V2 MULTI REGTEST OK" || say "V2 MULTI REGTEST FAILED"
 exit $fail

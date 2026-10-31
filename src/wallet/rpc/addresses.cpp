@@ -4,6 +4,7 @@
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
+#include <chainparams.h>
 #include <core_io.h>
 #include <key_io.h>
 #include <rpc/util.h>
@@ -42,6 +43,11 @@ RPCMethod getnewaddress()
     if (!pwallet) return UniValue::VNULL;
 
     LOCK(pwallet->cs_wallet);
+
+    // Qcoin value rule: ordinary addresses cannot receive value on ML-DSA-only chains.
+    if (Params().GetConsensus().fMlDsaOnlyValue) {
+        throw JSONRPCError(RPC_INVALID_REQUEST, "Ordinary (ECDSA) addresses cannot receive value on this chain. Use getnewmldsaaddress (or derivemldsaaddress) to get an ML-DSA witness v2 address.");
+    }
 
     if (!pwallet->CanGetAddresses()) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: This wallet has no available keys");
@@ -204,6 +210,11 @@ RPCMethod getrawchangeaddress()
     if (!pwallet) return UniValue::VNULL;
 
     LOCK(pwallet->cs_wallet);
+
+    // Qcoin value rule: change must be an ML-DSA output on ML-DSA-only chains (the wallet derives it itself).
+    if (Params().GetConsensus().fMlDsaOnlyValue) {
+        throw JSONRPCError(RPC_INVALID_REQUEST, "Ordinary (ECDSA) change addresses cannot carry value on this chain. The wallet derives ML-DSA change addresses automatically; use getnewmldsaaddress for an explicit one.");
+    }
 
     if (!pwallet->CanGetAddresses(true)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: This wallet has no available keys");

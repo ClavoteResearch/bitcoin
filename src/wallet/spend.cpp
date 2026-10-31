@@ -29,6 +29,10 @@
 #include <wallet/spend.h>
 #include <wallet/transaction.h>
 #include <wallet/wallet.h>
+#include <chainparams.h>
+#include <key_io.h>
+
+#include "../../fork/src/consensus/pq_value.h" // Qcoin: value rule
 
 #include <cmath>
 
@@ -1067,6 +1071,21 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
 {
     AssertLockHeld(wallet.cs_wallet);
 
+    // Qcoin value rule: on ML-DSA-only chains every value-carrying output must be a witness v2
+    // ML-DSA program, so refuse ordinary recipients (and an ordinary custom change address) up
+    // front with a clear error instead of building a transaction consensus will reject.
+    const bool mldsa_only = Params().GetConsensus().fMlDsaOnlyValue;
+    if (mldsa_only) {
+        for (const auto& recipient : vecSend) {
+            if (recipient.nAmount > 0 && !qcoin::pq::IsMlDsaValueScript(GetScriptForDestination(recipient.dest))) {
+                return util::Error{Untranslated(strprintf("Ordinary (ECDSA) outputs cannot carry value on this chain: %s is not an ML-DSA witness v2 address. Ask the recipient for a getnewmldsaaddress address.", EncodeDestination(recipient.dest)))};
+            }
+        }
+        if (!std::get_if<CNoDestination>(&coin_control.destChange) && !qcoin::pq::IsMlDsaValueScript(GetScriptForDestination(coin_control.destChange))) {
+            return util::Error{Untranslated("Ordinary (ECDSA) outputs cannot carry value on this chain: the change address must be an ML-DSA witness v2 address")};
+        }
+    }
+
     FastRandomContext rng_fast;
     CMutableTransaction txNew; // The resulting transaction that we make
 
@@ -1112,6 +1131,15 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     // coin control: send change to custom address
     if (!std::get_if<CNoDestination>(&coin_control.destChange)) {
         scriptChange = GetScriptForDestination(coin_control.destChange);
+    } else if (mldsa_only) {
+        // Qcoin: change must be an ML-DSA output as well. Derive and store the next HD ML-DSA key
+        // (label "change"). Unlike the ECDSA keypool the key is kept even if no change is needed.
+        auto op_dest = wallet.GetNewMlDsaDestination("change");
+        if (!op_dest) {
+            error = _("Transaction needs an ML-DSA change address, but we can't generate it.") + Untranslated(" ") + util::ErrorString(op_dest);
+        } else {
+            scriptChange = GetScriptForDestination(*op_dest);
+        }
     } else { // no coin control: send change to newly generated address
         // Note: We use a new key here to keep it from being obvious which side is the change.
         //  The drawback is that by not reusing a previous key, the change may be lost if a
