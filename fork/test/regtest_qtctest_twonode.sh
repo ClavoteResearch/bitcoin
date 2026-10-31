@@ -1,6 +1,9 @@
 #!/bin/bash
-# Two qtctest nodes on one machine: a "seed" node that listens and a second node started from the example
-# fork/contrib/qtctest.conf that connects to it. Mines a few blocks on the seed and checks the peer syncs them,
+# Two qtctest nodes on one machine, LOOPBACK ONLY: both bind 127.0.0.1 with -discover=0 -dnsseed=0, the peer is
+# pinned with -connect, and the P2P/RPC ports are overridden (29833/29832 and 29843/29842) so nothing here touches
+# the real 28333/28332, a firewall, DNS or the compiled-in seeds. It proves config handling and block propagation,
+# not public reachability; for that follow "Publishing a real seed node" in doc/WALLET-PQC.md.
+# A "seed" node listens and a second node started from the example fork/contrib/qtctest.conf connects to it. Mines a few blocks on the seed and checks the peer syncs them,
 # then mines on the peer and checks the seed follows. Verifies the example config parses and the ports are right.
 # Usage: regtest_qtctest_twonode.sh [path/to/build/bin]
 set -u
@@ -38,7 +41,7 @@ check "$($B getindexinfo | py 'import sys,json; print("txindex" in json.load(sys
 for i in $(seq 1 30); do [ "$($B getconnectioncount)" -ge 1 ] && break; sleep 1; done
 check "$($B getconnectioncount)" "1" "second node connected to the seed"
 check "$($A getconnectioncount)" "1" "seed sees the inbound peer"
-# loopback peers are classified not_publicly_routable; a real remote peer shows ipv4/ipv6
+# loopback peers are classified not_publicly_routable (a real remote peer would show ipv4/ipv6)
 check "$($A getpeerinfo | py 'import sys,json; p=json.load(sys.stdin)[0]; print(p["inbound"], p["network"], p["addr"].startswith("127.0.0.1:"))')" "True not_publicly_routable True" "seed: peer is inbound from loopback"
 wait_height "$B" 3 || true
 check "$($B getblockcount) $($B getbestblockhash)" "3 $($A getbestblockhash)" "second node synced to the seed's tip"

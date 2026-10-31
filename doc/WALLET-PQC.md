@@ -89,7 +89,8 @@ Exact commands for the first public `qtctest` deployment: one seed node, a
 second node connecting to it, and the explorer and faucet on the seed.
 `fork/contrib/qtctest.conf` is the example configuration used below (ports
 28333/28332, `txindex=1`, `walletsigscheme=mldsa44`, RPC on localhost only).
-`fork/test/regtest_qtctest_twonode.sh` runs this topology on one machine.
+`fork/test/regtest_qtctest_twonode.sh` runs this topology on one machine over
+loopback (no firewall, DNS or seed involved).
 
 ### Seed node (machine A, public IP or DNS name `seed1.example.net`)
 
@@ -144,10 +145,62 @@ Expose them only through a reverse proxy that terminates TLS and sets
 `/` -> `http://127.0.0.1:8080` and `/faucet/` -> `http://127.0.0.1:8081/`. Keep
 the faucet wallet funded from mining while the chain is small.
 
+### Publishing a real seed node
+
+Until a seed is published, every node needs an `addnode=` line. To turn machine A
+into a seed that new nodes find on their own:
+
+1. **Give it a stable address.** A static public IPv4 (and IPv6 if available)
+   and a DNS A/AAAA record, for example `seed1.example.net`. Start the node
+   with that address so it advertises it to peers:
+   `externalip=seed1.example.net` (or the IP) in the `[qtctest]` section, or
+   `-externalip=...` on the command line. Keep `listen=1`.
+2. **Open the port.** Allow inbound TCP 28333 in the host firewall
+   (`sudo ufw allow 28333/tcp`) and in any cloud security group or router NAT
+   rule. Leave 28332 (RPC) closed. Check from another machine:
+   `nc -vz seed1.example.net 28333`, then
+   `bitcoin-cli -chain=qtctest addnode seed1.example.net:28333 onetry` and
+   `getpeerinfo` on that machine must show the seed.
+3. **Update the example config.** Replace the placeholder lines in
+   `fork/contrib/qtctest.conf` with the real host, one `addnode=` per seed:
+   ```
+   addnode=seed1.example.net:28333
+   ```
+   and change the `seed1.example.net` placeholders in this section. Any node
+   started from the updated file connects without further setup.
+4. **Compile the seed in** so nodes find it with an empty config. In
+   `CQtcTestParams` (`src/kernel/chainparams.cpp`) replace
+   ```cpp
+   vFixedSeeds.clear(); // TODO(launch): add seed nodes before announcing the network
+   vSeeds.clear();
+   ```
+   with
+   ```cpp
+   vSeeds.emplace_back("seed1.example.net."); // DNS seed: every A/AAAA record is a peer
+   vFixedSeeds.clear();
+   ```
+   A plain A record is enough: Core resolves the name and adds all returned
+   addresses, so a second seed is just a second record (or a second
+   `emplace_back`). Fixed seeds are optional and need the same pipeline as
+   upstream: list `host:port` entries in `contrib/seeds/nodes_qtctest.txt`,
+   run `contrib/seeds/generate-seeds.py` to emit a
+   `chainparams_seed_qtctest[]` array into `src/chainparamsseeds.h`, and set
+   `vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_qtctest), std::end(chainparams_seed_qtctest));`.
+   Rebuild and re-run `fork/test/regtest_qtctest.sh` and
+   `regtest_qtctest_twonode.sh`. The two-node test passes `-dnsseed=0` and is
+   unaffected; the single-node tests (`-listen=0`, no `addnode=`) will start
+   querying the DNS seed and may make outbound connections once one exists, so
+   add `-dnsseed=0` to their `bitcoind` lines at that point to keep them
+   hermetic.
+5. **Test from a fresh machine.** Install the new binary, start `bitcoind
+   -chain=qtctest` with no config, and confirm `getconnectioncount` reaches 1
+   and `getblockchaininfo` matches the seed. Run at least two seeds on
+   different hosts before announcing.
+
 ### Before announcing
 
-- Add the seed's address to `vSeeds` (DNS) or `vFixedSeeds` in `CQtcTestParams`,
-  rebuild, and run a second seed.
+- Publish at least two seeds as described above (`vSeeds` set, example config
+  and this runbook updated with the real hostnames).
 - Publish: the git commit, the genesis hash, the P2P port, the seed names, the
   explorer and faucet URLs, and the note that test coins have no value.
 - Re-run `fork/test/regtest_qtctest.sh` and `regtest_qtctest_twonode.sh` on the
