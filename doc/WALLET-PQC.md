@@ -133,10 +133,10 @@ Launch checklist (in order):
    proxy on a seed node. Third-party explorers must learn the `tq` HRP and that
    witness version 2 outputs are ML-DSA attestations (`OP_2 <Q>`, 3735-byte
    witness); until then they show as "unknown witness v2".
-5. **Faucet.** A faucet wallet on an always-on node, started with
-   `-walletsigscheme=mldsa44`, paying to both `tq1q` and `tq1z` addresses so
-   testers can exercise ML-DSA receives and spends. Fund it from on-demand
-   mining before the PoW regime changes.
+5. **Faucet.** `fork/tools/qtc-faucet.py` (see "Faucet") on an always-on node
+   started with `-walletsigscheme=mldsa44`: `fund` it from on-demand mining
+   before the PoW regime changes, then `serve` it behind a reverse proxy. It
+   pays `tq1z` addresses by default (`--allow-any-address` for `tq1q`).
 6. **Documentation for testers.** How to build with liboqs, how to start with
    `-chain=qtctest`, how to get a `tq1z` address (`getnewmldsaaddress`), how to
    read `getdeploymentinfo`, and what is still experimental (see "Testnet
@@ -178,6 +178,41 @@ ML-DSA markers), `/blocks?from=H`, `/block/<height|hash>`, `/tx/<txid>`,
 
 `fork/test/regtest_qtctest_explorer.sh` starts a node and the explorer, mines,
 makes a tq1z spend, and checks every page.
+
+## Faucet
+
+`fork/tools/qtc-faucet.py` pays small amounts from a node wallet to tester
+addresses. Standard library only; by default it pays **only witness v2 ML-DSA
+addresses** (`tq1z…`) so every tester exercises the PQ path.
+
+```bash
+# node with a wallet-capable scheme
+bitcoind -chain=qtctest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
+
+# 1. fund the faucet wallet (creates wallet "faucet"; on-demand PoW chains only)
+python3 fork/tools/qtc-faucet.py fund --blocks 101        # coinbase matures after 100 blocks
+
+# 2a. operator one-off payment (no rate limit)
+python3 fork/tools/qtc-faucet.py send tq1z... --amount 1.0
+
+# 2b. public faucet on http://127.0.0.1:8081/ (form + API)
+python3 fork/tools/qtc-faucet.py serve --amount 1.0 --cooldown 86400 --max-per-ip 5
+#   GET /api/claim?address=tq1z...   POST /claim (form)   GET /api/status
+#   --confirm-blocks 1   mine a block after each payout (on-demand PoW only), so the
+#                        tester sees a confirmed receive immediately
+#   --allow-any-address  also pay tq1q (legacy segwit) addresses
+#   --state FILE         rate-limit state (per address and per client IP), default faucet-state.json
+#   --bind 0.0.0.0       expose it; run behind a reverse proxy with TLS, which sets X-Forwarded-For
+```
+
+Common options match the explorer (`--chain`, `--datadir`, `--rpcurl`,
+`--rpcuser/--rpcpassword`); the wallet is loaded or created on start. Refusals
+are explicit: invalid address, non-v2 address, address or client in cooldown,
+faucet dry. Test coins have no value; the state file is the only persistence.
+
+`fork/test/regtest_qtctest_faucet.sh` funds a faucet by mining, serves it,
+claims to a fresh `tq1z` address from a second wallet, confirms the receive, and
+checks the refusal paths and the operator CLI.
 
 ## Testnet readiness
 
