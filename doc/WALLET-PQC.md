@@ -83,6 +83,76 @@ script-verify flag `SCRIPT_VERIFY_MLDSA_V2`:
   extras: the ML-DSA-87 `param_id` 0x7f and the `qcoin-v2-selftest` binary.
   The default build contains the complete v2 path.
 
+## Public launch
+
+Exact commands for the first public `qtctest` deployment: one seed node, a
+second node connecting to it, and the explorer and faucet on the seed.
+`fork/contrib/qtctest.conf` is the example configuration used below (ports
+28333/28332, `txindex=1`, `walletsigscheme=mldsa44`, RPC on localhost only).
+`fork/test/regtest_qtctest_twonode.sh` runs this topology on one machine.
+
+### Seed node (machine A, public IP or DNS name `seed1.example.net`)
+
+```bash
+# 0. build (see "Build") and install liboqs 0.14.0; a fresh data directory (new genesis = new network)
+mkdir -p ~/.bitcoin && cp fork/contrib/qtctest.conf ~/.bitcoin/bitcoin.conf
+# edit ~/.bitcoin/bitcoin.conf: keep listen=1; remove the addnode= lines on the first seed
+
+# 1. firewall: allow inbound 28333/tcp (P2P). Do NOT open 28332 (RPC).
+sudo ufw allow 28333/tcp          # or the equivalent for your firewall
+
+# 2. start
+bitcoind -daemon
+bitcoin-cli -chain=qtctest getblockchaininfo          # "chain": "qtctest", height 0
+bitcoin-cli -chain=qtctest getnetworkinfo | grep -A1 '"localaddresses"'   # should list the public address
+
+# 3. produce the first blocks (one block per call; about 3 s each at 1e00ffff)
+bitcoin-cli -chain=qtctest createwallet faucet
+M=$(bitcoin-cli -chain=qtctest -rpcwallet=faucet getnewaddress)
+for i in $(seq 1 110); do bitcoin-cli -chain=qtctest generatetoaddress 1 "$M" 2000000000 > /dev/null; done
+```
+
+### Second node (machine B)
+
+```bash
+cp fork/contrib/qtctest.conf ~/.bitcoin/bitcoin.conf
+# edit: addnode=seed1.example.net:28333 (uncomment, set the real host); listen=0 is fine behind NAT
+bitcoind -daemon
+bitcoin-cli -chain=qtctest getconnectioncount          # 1 once the handshake completes
+bitcoin-cli -chain=qtctest getblockchaininfo           # height/bestblockhash equal to the seed's
+bitcoin-cli -chain=qtctest getdeploymentinfo           # mldsav2 active
+bitcoin-cli -chain=qtctest createwallet w
+bitcoin-cli -chain=qtctest -rpcwallet=w getnewmldsaaddress     # tq1z... to paste into the faucet
+```
+
+If the second node stays at 0 connections: check the seed's firewall, that both
+nodes print the same genesis (`getblockhash 0` =
+`0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437`), and that
+neither data directory predates the current genesis.
+
+### Explorer and faucet (on the seed)
+
+```bash
+# explorer on 127.0.0.1:8080, faucet on 127.0.0.1:8081; both read the RPC cookie
+nohup python3 fork/tools/qtc-explorer.py --chain qtctest --bind 127.0.0.1 --port 8080 > explorer.log 2>&1 &
+nohup python3 fork/tools/qtc-faucet.py serve --chain qtctest --wallet faucet --amount 1.0 \
+      --cooldown 86400 --max-per-ip 5 --bind 127.0.0.1 --port 8081 > faucet.log 2>&1 &
+```
+
+Expose them only through a reverse proxy that terminates TLS and sets
+`X-Forwarded-For` (the faucet rate-limits on it), for example nginx locations
+`/` -> `http://127.0.0.1:8080` and `/faucet/` -> `http://127.0.0.1:8081/`. Keep
+the faucet wallet funded from mining while the chain is small.
+
+### Before announcing
+
+- Add the seed's address to `vSeeds` (DNS) or `vFixedSeeds` in `CQtcTestParams`,
+  rebuild, and run a second seed.
+- Publish: the git commit, the genesis hash, the P2P port, the seed names, the
+  explorer and faucet URLs, and the note that test coins have no value.
+- Re-run `fork/test/regtest_qtctest.sh` and `regtest_qtctest_twonode.sh` on the
+  release build; run `qcoin-v2-selftest` from an experimental build.
+
 ## Testnet launch
 
 A dedicated chain, `-chain=qtctest`, exists for the public testnet. Its parameters
@@ -125,9 +195,10 @@ Launch checklist (in order):
    difficulty-1 candidate is already mined and listed) and wipe data
    directories. Set `nMinimumChainWork`/`defaultAssumeValid` once a
    few thousand blocks exist.
-3. **Seed nodes.** Run at least two always-on nodes, add their addresses to
+3. **Seed nodes.** Run at least two always-on nodes (see "Public launch" for the
+   exact commands and `fork/contrib/qtctest.conf`), add their addresses to
    `vSeeds` (DNS) or `vFixedSeeds`, and open port 28333. Until then, peers use
-   `-addnode`/`-connect`.
+   `addnode=`/`-connect`.
 4. **Explorer.** `fork/tools/qtc-explorer.py` (see "Status page and explorer")
    gives a read-only web view with ML-DSA labelling; run it behind a reverse
    proxy on a seed node. Third-party explorers must learn the `tq` HRP and that
