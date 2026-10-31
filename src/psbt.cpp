@@ -12,11 +12,50 @@
 #include <util/check.h>
 #include <util/result.h>
 #include <util/strencodings.h>
+#include "../fork/src/script/witness_v2.h" // Qcoin / Option B: witness v2 ML-DSA inputs in PSBTs
 
 #include <algorithm>
 #include <set>
 
 using common::PSBTError;
+
+#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
+namespace {
+// Qcoin / Option B proprietary PSBT input field (BIP 174 type 0xFC):
+//   identifier = "qcoin", subtype = 0, value = param_id || ML-DSA public key
+// It lets a signer that does not hold the wpq() descriptor map the 32-byte witness v2
+// program back to the public key it must attest with. The finished attestation travels
+// in the standard final_scriptwitness field; there is no partial-signature form, since a
+// key-path v2 input has exactly one signer.
+const std::vector<unsigned char> QCOIN_PROP_ID{'q', 'c', 'o', 'i', 'n'};
+constexpr uint64_t QCOIN_PROP_MLDSA_PUBKEY = 0;
+
+PSBTProprietary MakeMlDsaPubKeyField(uint8_t param_id, const std::vector<unsigned char>& pk)
+{
+    PSBTProprietary p;
+    p.identifier = QCOIN_PROP_ID;
+    p.subtype = QCOIN_PROP_MLDSA_PUBKEY;
+    DataStream k;
+    k << PSBT_IN_PROPRIETARY << p.identifier;
+    WriteCompactSize(k, p.subtype);
+    p.key.assign(UCharCast(k.data()), UCharCast(k.data()) + k.size());
+    p.value.reserve(1 + pk.size());
+    p.value.push_back(param_id);
+    p.value.insert(p.value.end(), pk.begin(), pk.end());
+    return p;
+}
+
+bool ParseMlDsaPubKeyField(const PSBTProprietary& p, uint8_t& param_id, std::vector<unsigned char>& pk)
+{
+    if (p.identifier != QCOIN_PROP_ID || p.subtype != QCOIN_PROP_MLDSA_PUBKEY || p.value.size() < 2) return false;
+    param_id = p.value[0];
+    const auto sizes = qcoin::v2::SizesFor(param_id);
+    if (!sizes || p.value.size() != 1 + sizes->pk) return false;
+    pk.assign(p.value.begin() + 1, p.value.end());
+    return true;
+}
+} // namespace
+#endif
 
 PartiallySignedTransaction::PartiallySignedTransaction(const CMutableTransaction& tx, uint32_t version) : m_version(version)
 {
@@ -682,12 +721,49 @@ util::Expected<void, PSBTError> SignPSBTInput(const SigningProvider& provider, P
         return util::Unexpected{PSBTError::MISSING_INPUTS};
     }
 
+    bool is_qcoin_v2 = false;
+    const SigningProvider* sign_provider = &provider;
+#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
+    // Qcoin / Option B: witness v2 ML-DSA input. Publish the ML-DSA public key as a
+    // proprietary field when we know it; otherwise take it from the field (if the
+    // commitment checks out) so the signer can find the matching secret.
+    std::unique_ptr<MultiSigningProvider> qcoin_provider;
+    {
+        int wv{0};
+        std::vector<unsigned char> wp;
+        if (utxo.scriptPubKey.IsWitnessProgram(wv, wp) && wv == qcoin::v2::WITNESS_V2_VERSION && wp.size() == qcoin::v2::WITNESS_V2_PROGRAM_SIZE) {
+            is_qcoin_v2 = true;
+            std::vector<unsigned char> pk;
+            if (provider.GetMlDsaPubKey(wp, pk)) {
+                if (const auto param_id = qcoin::v2::ParamIdForPubKeyLen(pk.size())) {
+                    input.m_proprietary.insert(MakeMlDsaPubKeyField(*param_id, pk)); // no-op if already present
+                }
+            } else {
+                for (const auto& prop : input.m_proprietary) {
+                    uint8_t param_id{0};
+                    if (!ParseMlDsaPubKeyField(prop, param_id, pk)) continue;
+                    const uint256 q = qcoin::v2::ComputeCommitment(param_id, qcoin::v2::PubKeyHash(pk), {});
+                    if (!std::equal(q.begin(), q.end(), wp.begin())) continue; // field does not match this output
+                    auto extra = std::make_unique<FlatSigningProvider>();
+                    extra->mldsa_pubkeys[wp] = pk;
+                    qcoin_provider = std::make_unique<MultiSigningProvider>();
+                    qcoin_provider->AddProvider(std::make_unique<HidingSigningProvider>(&provider, /*hide_secret=*/false, /*hide_origin=*/false));
+                    qcoin_provider->AddProvider(std::move(extra));
+                    sign_provider = qcoin_provider.get();
+                    break;
+                }
+            }
+        }
+    }
+#endif
+
     // Get the sighash type
     // If both the field and the parameter are provided, they must match
     // If only the parameter is provided, use it and add it to the PSBT if it is other than SIGHASH_DEFAULT
     // for all input types, and not SIGHASH_ALL for non-taproot input types.
     // If neither are provided, use SIGHASH_DEFAULT if it is taproot, and SIGHASH_ALL for everything else.
-    int sighash{options.sighash_type.value_or(utxo.scriptPubKey.IsPayToTaproot() ? SIGHASH_DEFAULT : SIGHASH_ALL)};
+    // (Qcoin: a witness v2 ML-DSA input carries no hashtype byte and always uses SIGHASH_DEFAULT, like taproot.)
+    int sighash{options.sighash_type.value_or((utxo.scriptPubKey.IsPayToTaproot() || is_qcoin_v2) ? SIGHASH_DEFAULT : SIGHASH_ALL)};
 
     // For user safety, the desired sighash must be provided if the PSBT wants something other than the default set in the previous line.
     if (input.sighash_type && input.sighash_type != sighash) {
@@ -696,7 +772,7 @@ util::Expected<void, PSBTError> SignPSBTInput(const SigningProvider& provider, P
     // Set the PSBT sighash field when sighash is not DEFAULT or ALL
     // DEFAULT is allowed for non-taproot inputs since DEFAULT may be passed for them (e.g. the psbt being signed also has taproot inputs)
     // Note that signing already aliases DEFAULT to ALL for non-taproot inputs.
-    if (utxo.scriptPubKey.IsPayToTaproot() ? sighash != SIGHASH_DEFAULT :
+    if ((utxo.scriptPubKey.IsPayToTaproot() || is_qcoin_v2) ? sighash != SIGHASH_DEFAULT :
                                             (sighash != SIGHASH_DEFAULT && sighash != SIGHASH_ALL)) {
         input.sighash_type = sighash;
     }
@@ -724,10 +800,10 @@ util::Expected<void, PSBTError> SignPSBTInput(const SigningProvider& provider, P
     sigdata.witness = false;
     bool sig_complete;
     if (txdata == nullptr) {
-        sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata);
+        sig_complete = ProduceSignature(*sign_provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata);
     } else {
         MutableTransactionSignatureCreator creator(tx, index, utxo.nValue, txdata, {.sighash_type = sighash});
-        sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);
+        sig_complete = ProduceSignature(*sign_provider, creator, utxo.scriptPubKey, sigdata);
     }
     // Verify that a witness signature was produced in case one was required.
     if (require_witness_sig && !sigdata.witness) return util::Unexpected{PSBTError::INCOMPLETE};

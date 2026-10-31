@@ -56,6 +56,34 @@ Nothing short of outputs that commit to an ML-DSA public key can make this pass.
 - No RPC exposes the keys; `listdescriptors true` cannot print a private form
   of `wpq()`.
 
+## PSBT
+
+Witness v2 inputs work with the standard PSBT flow (`walletcreatefundedpsbt`,
+`walletprocesspsbt`, `finalizepsbt`, `sendrawtransaction`) in experimental
+builds:
+
+- **Creation.** A wallet that tracks a `wpq()` descriptor, with or without the
+  secret, funds the PSBT as usual (the coin is solvable through the inferred
+  descriptor). `SignPSBTInput` recognises a 32-byte witness v2 program and adds a
+  proprietary input field, BIP 174 type `0xFC`, identifier `qcoin`, subtype `0`,
+  value `param_id || ML-DSA public key`, whenever the filling wallet knows the key.
+  `decodepsbt` shows it under `inputs[].proprietary`.
+- **Signing.** The signer's `ProduceSignature` builds the attestation and the
+  input is finalised directly: the 3735-byte attestation lands in
+  `final_scriptwitness`. There is no partial-signature stage because a key-path
+  v2 input has exactly one signer. If the signer's own descriptors do not know
+  the public key behind the program, it is taken from the proprietary field,
+  provided it matches the output commitment, so a signer holding only the
+  secret can still complete the input.
+- **Sighash.** v2 inputs are treated like taproot: `SIGHASH_DEFAULT`, no
+  hashtype byte, and no `sighash_type` field is written for the default.
+- **Finalisation.** `PSBTInputSignedAndVerified` runs the consensus verifier on
+  the final witness, so a bad attestation is rejected before extraction.
+
+Not done: a partial/aggregate form for a future multi-entry attestation, PSBT
+fields for the script path, and an exported secret-key format for offline
+signers (the secret is only ever in the wallet database).
+
 ## HD derivation
 
 `getnewmldsaaddress` no longer generates independent keypairs. Every ML-DSA key
@@ -192,7 +220,7 @@ What exists:
   scheme now only selects which ML-DSA parameter set the wallet generates and
   attests with.
 
-Regtest flow (see `fork/test/regtest_v2_spend.sh`, `fork/test/regtest_v2_multi.sh` and `fork/test/regtest_v2_encrypt.sh`):
+Regtest flow (see the `fork/test/regtest_v2_*.sh` scripts: spend, multi, encrypt, hd, psbt):
 
 ```bash
 bitcoind -regtest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
@@ -307,9 +335,11 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
 ### 6. Parser and signer: `script/sign.cpp`, `script/interpreter.cpp`
 - [~] `ProduceSignature`: key path done (`CreateMlDsaAttestation`, witness `[attestation]`).
       Script path pending.
-- [ ] `SignatureExtractorChecker` / `DataFromTransaction` understand the
-      attestation so partially signed inputs round-trip through PSBT.
-- [ ] PSBT fields for ML-DSA pubkeys and partial signatures.
+- [~] PSBT round-trip works for key-path inputs (create unsigned, sign elsewhere,
+      finalise). `DataFromTransaction` extraction of an attestation is not implemented.
+- [~] PSBT: proprietary `qcoin`/0 input field carrying the ML-DSA public key;
+      finished attestations use `final_scriptwitness`. No partial form (none needed
+      for the key path).
 - [~] Regtest script `fork/test/regtest_v2_spend.sh` funds and spends a `wpq()`
       output (key path). Script path and a proper functional test pending.
 

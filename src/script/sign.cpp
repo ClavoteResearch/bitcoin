@@ -809,12 +809,12 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
         int witver{0};
         std::vector<unsigned char> witprog;
         if (fromPubKey.IsWitnessProgram(witver, witprog) && witver == qcoin::v2::WITNESS_V2_VERSION && witprog.size() == qcoin::v2::WITNESS_V2_PROGRAM_SIZE) {
+            sigdata.witness = true; // a v2 spend is always a witness spend, signed or not (PSBT fillers rely on this)
             std::vector<unsigned char> attestation;
             if (!creator.CreateMlDsaAttestation(provider, attestation, witprog)) return false;
             sigdata.scriptSig.clear();
             sigdata.scriptWitness.stack.clear();
             sigdata.scriptWitness.stack.push_back(std::move(attestation));
-            sigdata.witness = true;
             sigdata.complete = VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());
             return sigdata.complete;
         }
