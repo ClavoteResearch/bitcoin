@@ -14,7 +14,7 @@ the shell tests in `fork/test/` on the default build unless marked otherwise.
 |---|---|---|
 | Witness v2 output (Option B) | `fork/src/script/witness_v2.h`, `script/interpreter.cpp` (`VerifyWitnessProgram`) | **Working.** `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| SHA256(pk))`. The spend's last witness element is the attestation `0x51 \|\| n \|\| param_id \|\| pk \|\| sig`; the interpreter checks the commitment and verifies the ML-DSA signature over `param_id \|\| pk_hash \|\| sighash` (BIP341 sighash, SIGHASH_DEFAULT) with context `BIP-MLDSAv2`. Param id `0x01` = ML-DSA-44 (3735-byte attestation). Errors `SCRIPT_ERR_MLDSA_ATTESTATION` / `SCRIPT_ERR_MLDSA_SIG`. |
 | Activation | `Consensus::DEPLOYMENT_MLDSA_V2` ("mldsav2"), `SCRIPT_VERIFY_MLDSA_V2`, `validation.cpp` | **Working.** Buried deployment: height 0 on regtest (override `-testactivationheight=mldsav2@N`) and `qtctest`; never on mainnet/testnet/signet. Before activation v2 inputs are anyone-can-spend for blocks and rejected by the mempool (`mempool-script-verify-flag-failed`); after it the flag is enforced in blocks and policy, and `AreInputsStandard` accepts v2. Shown by `getdeploymentinfo`. Test: `regtest_v2_activation.sh`. |
-| Legacy ECDSA-path routing | `fork/src/script/verify_stub.h`, CMake `QCOIN_ECDSA_FALLBACK` (default ON) | **Leftover, must be reverted.** From the first experiment: legacy ECDSA checks in the interpreter go through this stub, which falls back to secp256k1 when the input is not ML-DSA-87 sized. With the fallback on (every build so far) behaviour equals upstream. It is unrelated to witness v2 and is the first item under "Testnet readiness". |
+| Legacy ECDSA path | `script/interpreter.cpp` (`VerifyECDSASignature`) | **Upstream again.** The first experiment (commit 13d6b525) routed every legacy ECDSA check through an ML-DSA-87 stub with a secp256k1 fallback; that routing, `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. Legacy inputs never touch liboqs, so the v2 rules are a genuine soft fork. Checked by the P2WPKH spend in `regtest_qtctest.sh`. |
 | ML-DSA primitives | `fork/src/pqc/pqc.{h,cpp}` (library `qcoin_pqc`) | **Working.** liboqs 0.14 wrappers: keygen (random and from a 32-byte seed via a temporary custom RNG under a mutex), sign/verify with context, HD master/child seed derivation, `SecureBytes` on Core's `secure_allocator`, `WipeSecret`. ML-DSA-44 and ML-DSA-87. |
 | Wallet scheme switch | `-walletsigscheme=<ecdsa\|mldsa44\|mldsa87>` (`wallet/init.cpp`) | **Working.** Default `ecdsa` leaves the wallet upstream-identical. `mldsa44` makes wallet creation also generate an ML-DSA key and import a `wpq()` descriptor. `mldsa87` only in experimental builds (param id `0x7f`, non-BIP). |
 | Addresses and descriptors | `script/descriptor.cpp` (`WpqDescriptor`), `wallet/rpc/addresses.cpp` | **Working.** `wpq(HEXPK)` emits `OP_2 <Q>`; `InferDescriptor` maps `OP_2 <Q>` back to `wpq()` (needed for fee estimation). RPCs `getnewmldsaaddress [label]`, `derivemldsaaddress <index>`, `getmldsahdinfo`. Addresses are bech32m witness version 2: `bcrt1z...` (regtest), `tq1z...` (qtctest), `bc1z...` (mainnet, never active). Destination type is still `WitnessUnknown{2,Q}` (no dedicated `OutputType`). |
@@ -33,8 +33,7 @@ the shell tests in `fork/test/` on the default build unless marked otherwise.
 With `-walletsigscheme=ecdsa` (the default) the wallet, address types and
 signing are unchanged from upstream, so existing wallet and functional test
 flows keep working. Consensus differs from upstream only where `mldsav2` is
-active (regtest and `qtctest`) and in the leftover ECDSA-path routing noted
-above.
+active (regtest and `qtctest`).
 
 ### What a v2 spend looks like
 
@@ -256,8 +255,8 @@ Launch checklist (in order):
    (the default build has the whole v2 path; the option only adds the non-BIP
    ML-DSA-87 extras). Publish reproducible builds for Linux at least, with liboqs
    either statically linked or pinned (0.14.0) in the install instructions.
-   Revert commit 13d6b525 (legacy ECDSA-path routing) and drop
-   `QCOIN_ECDSA_FALLBACK` first, otherwise legacy spends are not a soft fork.
+   Commit 13d6b525 (legacy ECDSA-path routing) is reverted, so legacy spends
+   are upstream-identical and the v2 rules are a soft fork.
 2. **Genesis and PoW.** The genesis above (`1e00ffff`) is the open-testnet
    value. To change it again follow "Raising the proof-of-work difficulty" (a
    difficulty-1 candidate is already mined and listed) and wipe data
@@ -458,7 +457,7 @@ new genesis or a soft fork of the testnet.
 
 | Item | Status | Before announcing? |
 |---|---|---|
-| Legacy ECDSA-path routing | Open. Commit 13d6b525 still routes legacy ECDSA checks through `fork/src/script/verify_stub.h`; with `QCOIN_ECDSA_FALLBACK=ON` (every build so far) behaviour equals upstream. Revert the commit, drop the option, keep witness v2 (checklist section 2). | Yes |
+| Legacy ECDSA-path routing | **Done.** `VerifyECDSASignature` is upstream `pubkey.Verify` again; `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. `regtest_qtctest.sh` confirms an ordinary P2WPKH spend next to a v2 spend. | Yes (done) |
 | Canonical ML-DSA signature encoding | Open. liboqs accepts any valid encoding; add the FIPS 204 hint-count/canonical-hint check before `OQS_SIG_verify` in `witness_v2.h` so signatures are not malleable (txid stability). | Yes |
 | Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
 | Script path | Not started. BIP section 5: `OP_CHECKMLDSAVERIFY` (0xb3), control block and leaf rules, leaf sighash extension, `wpq(KEY,{TREE})`. Key path only until then. | No for a key-path testnet; adding it later is a soft fork of the testnet |
@@ -541,10 +540,10 @@ Q_i        = tagged_hash("MLDSAv2/Commit", param_id || SHA256(pk_i))
 
 Two incompatible designs are present in this tree and only one can survive.
 
-### Option A: hard-wired ECDSA-path routing (what the branch does today)
+### Option A: hard-wired ECDSA-path routing (what the branch did until the revert)
 
-Commit 13d6b525 replaces `VerifyECDSASignature` in the interpreter with an
-ML-DSA-87 check. Signatures and keys travel in the existing scriptSig /
+Commit 13d6b525 replaced `VerifyECDSASignature` in the interpreter with an
+ML-DSA-87 check (reverted; kept here as the record of the decision). Signatures and keys travel in the existing scriptSig /
 witness v0 positions.
 
 - Pro: minimal code. Reuses every existing script template, descriptor and
@@ -575,10 +574,10 @@ with only 32-byte stack operands. ML-DSA-44 is the only parameter set defined.
 
 ### Recommendation
 
-Choose B. Everything built so far is reusable under B: `pqc.h` already models
+Choose B (done: 13d6b525 is reverted). Everything built so far is reusable under B: `pqc.h` already models
 both parameter sets, the `walletdescriptormldsakey` records become the backing for a
-`mldsa()` descriptor key, and `verify_stub.h` collapses to a helper that the
-attestation verifier calls. If A is kept instead, document it as a hard-fork
+`mldsa()` descriptor key, and `verify_stub.h` is deleted (the attestation
+verifier in `witness_v2.h` has its own liboqs call). If A is kept instead, document it as a hard-fork
 testnet experiment and delete the BIP compliance section from the draft.
 
 ## Receiving to and spending from a witness v2 output
@@ -718,8 +717,8 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
 - [~] v2 sighash: key path uses `SignatureHashSchnorr(TAPROOT, SIGHASH_DEFAULT)`;
       `param_id`/`pk_hash` are committed in the message, not the hash. Script-path
       extension pending.
-- [ ] Revert commit 13d6b525 (ECDSA-path routing) and drop
-      `QCOIN_ECDSA_FALLBACK` once the v2 path verifies end to end.
+- [x] Revert commit 13d6b525 (ECDSA-path routing) and drop
+      `QCOIN_ECDSA_FALLBACK`: `VerifyECDSASignature` is upstream again, `verify_stub.h` deleted.
 
 ### 3. Output commitment and classification: `script/solver.cpp`, `script/script.h`
 - [ ] `TxoutType::WITNESS_V2_MLDSA` returned for v2 + 32 bytes (marker in
@@ -763,7 +762,7 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
 ### Exit criteria
 A regtest wallet with `-walletsigscheme=mldsa44 -addresstype=bech32m-v2`
 receives to a `bcrt1z` address and spends it in a block that the node accepts
-with `QCOIN_ECDSA_FALLBACK=OFF` and commit 13d6b525 reverted.
+with commit 13d6b525 reverted (done; `QCOIN_ECDSA_FALLBACK` no longer exists).
 
 ## Remaining gaps
 
@@ -774,8 +773,7 @@ derivation, PSBT) is implemented and tested; see "Current status". What remains,
 with status, is the table under "Open items for public testnet". In short:
 
 - Consensus: canonical signature-encoding check; script path
-  (`OP_CHECKMLDSAVERIFY`, control block, leaf sighash); revert of the legacy
-  ECDSA-path routing.
+  (`OP_CHECKMLDSAVERIFY`, control block, leaf sighash).
 - Wallet and policy: dedicated `CTxDestination`/`OutputType` for v2; dust
   threshold from the v2 input size; a published derivation path; attestation
   extraction in `DataFromTransaction`.
@@ -796,6 +794,4 @@ build/bin/bitcoind -regtest -daemon -walletsigscheme=mldsa87
 # the key survives a restart: it is a record in wallet.dat
 build/bin/bitcoin-cli -regtest stop && build/bin/bitcoind -regtest -daemon -walletsigscheme=mldsa87
 
-# strict consensus routing (no ECDSA fallback)
-cmake -B build -DQCOIN_ECDSA_FALLBACK=OFF && cmake --build build --target bitcoind
 ```

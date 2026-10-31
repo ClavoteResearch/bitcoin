@@ -25,7 +25,7 @@ namespace qcoin::pqc {
 enum class SigScheme : uint8_t {
     ECDSA = 0,   //!< legacy secp256k1 ECDSA (default; keeps existing test flows working)
     MLDSA44 = 1, //!< FIPS 204 ML-DSA-44 (param_id 0x01 in the BIP draft)
-    MLDSA87 = 2, //!< FIPS 204 ML-DSA-87 (what fork/src/script/verify_stub.h currently verifies)
+    MLDSA87 = 2, //!< FIPS 204 ML-DSA-87 (param_id 0x7f, experimental builds only; not in the BIP)
 };
 
 /** Compile-time default, overridable with -DQCOIN_DEFAULT_SIG_SCHEME=<0|1|2>. */

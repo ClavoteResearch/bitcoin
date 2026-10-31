@@ -66,14 +66,12 @@ else()
   add_library(bitcoin_ipc STATIC EXCLUDE_FROM_ALL ipc/stub.cpp)
 endif()
 
-# Qcoin: ML-DSA-87 verification backend (liboqs)
+# Qcoin: liboqs provides ML-DSA for the witness v2 verifier (fork/src/script/witness_v2.h) and the wallet
 find_path(OQS_INCLUDE_DIR NAMES oqs/oqs.h REQUIRED)
 find_library(OQS_LIBRARY NAMES oqs REQUIRED)
 message(STATUS "Qcoin: liboqs include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
-option(QCOIN_ECDSA_FALLBACK "Fall back to secp256k1 ECDSA verification for non-ML-DSA-sized signatures" ON)
 option(QCOIN_WITNESS_V2_EXPERIMENTAL "Build experimental extras for the segwit v2 ML-DSA path: non-BIP ML-DSA-87 param_id 0x7f and qcoin-v2-selftest (activation itself is DEPLOYMENT_MLDSA_V2)" OFF)
 message(STATUS "Qcoin: QCOIN_WITNESS_V2_EXPERIMENTAL=${QCOIN_WITNESS_V2_EXPERIMENTAL}")
-message(STATUS "Qcoin: QCOIN_ECDSA_FALLBACK=${QCOIN_ECDSA_FALLBACK}")
 
 # Qcoin: wallet-side PQC scheme switch and liboqs ML-DSA keygen/sign stubs
 add_library(qcoin_pqc STATIC EXCLUDE_FROM_ALL
@@ -104,9 +102,6 @@ target_link_libraries(bitcoin_consensus
 )
 target_include_directories(bitcoin_consensus PUBLIC ${OQS_INCLUDE_DIR})
 target_link_libraries(bitcoin_consensus PUBLIC ${OQS_LIBRARY})
-if(QCOIN_ECDSA_FALLBACK)
-  target_compile_definitions(bitcoin_consensus PUBLIC QCOIN_ECDSA_FALLBACK)
-endif()
 if(QCOIN_WITNESS_V2_EXPERIMENTAL)
   target_compile_definitions(bitcoin_consensus PUBLIC QCOIN_WITNESS_V2_EXPERIMENTAL)
   # Self-test: build, sign and verify a key-path witness v2 spend end to end.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Qcoin testnet chain ("qtctest") bring-up: starts, reports the mldsav2 deployment active from genesis, mines at the
-# real 1e00ffff difficulty (generatetoaddress with a large maxtries), issues tq1z addresses and accepts a witness v2
-# ML-DSA spend. Works with the default build.
+# real 1e00ffff difficulty (generatetoaddress with a large maxtries), issues tq1z addresses, accepts a witness v2
+# ML-DSA spend, and confirms that an ordinary P2WPKH (ECDSA) spend is unchanged. Works with the default build.
 # Usage: regtest_qtctest.sh [path/to/build/bin]
 set -u
 BIN="${1:-build/bin}"
@@ -55,6 +55,16 @@ check "${#TX}" "64" "spend from the tq1z coin accepted by the mempool"
 check "$($CLI getrawtransaction "$TX" true | py 'import sys,json; w=json.load(sys.stdin)["vin"][0]["txinwitness"]; print(len(w[0])//2, w[0][:6])')" "3735 510101" "witness is a 3735-byte ML-DSA-44 attestation"
 mine 1 "$M"
 check "$($W gettransaction "$TX" | jget confirmations)" "1" "spend confirmed on qtctest"
+
+say "== ordinary ECDSA spend (soft-fork check: legacy inputs never touch ML-DSA) =="
+E=$($W getnewaddress)
+# largest ordinary (tq1q, P2WPKH) coin: a coinbase, not the ~4-coin change of the v2 spend
+IN2=$($W listunspent | py 'import sys,json; u=max((x for x in json.load(sys.stdin) if x["address"].startswith("tq1q") and x["spendable"]), key=lambda x: x["amount"]); print(json.dumps([{"txid":u["txid"],"vout":u["vout"]}]))')
+TX2=$($W -named send outputs="{\"$E\":5}" options="{\"inputs\":$IN2,\"add_inputs\":false}" | jget txid)
+check "${#TX2}" "64" "P2WPKH spend accepted by the mempool"
+check "$($CLI getrawtransaction "$TX2" true | py 'import sys,json; w=json.load(sys.stdin)["vin"][0]["txinwitness"]; print(len(w), len(w[1])//2, 70<=len(w[0])//2<=72)')" "2 33 True" "witness is [ECDSA sig, 33-byte pubkey], not an attestation"
+mine 1 "$M"
+check "$($W gettransaction "$TX2" | jget confirmations)" "1" "ECDSA spend confirmed on qtctest"
 $CLI stop >/dev/null
 [ $fail -eq 0 ] && say "QTCTEST CHAIN OK" || say "QTCTEST CHAIN FAILED"
 exit $fail
