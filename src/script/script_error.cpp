@@ -125,6 +125,10 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Invalid ML-DSA signature";
         case SCRIPT_ERR_MLDSA_SIG_ENCODING:
             return "Non-canonical ML-DSA signature encoding";
+        case SCRIPT_ERR_CHECKMLDSAVERIFY:
+            return "OP_CHECKMLDSAVERIFY: bad entry index or key hash";
+        case SCRIPT_ERR_MLDSA_ENTRY_UNUSED:
+            return "Attestation entry not verified by OP_CHECKMLDSAVERIFY";
         case SCRIPT_ERR_UNKNOWN_ERROR:
         case SCRIPT_ERR_ERROR_COUNT:
             break;

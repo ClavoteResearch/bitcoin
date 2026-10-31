@@ -210,6 +210,8 @@ enum class SigVersion
     TAPSCRIPT = 3,   //!< Witness v1 with 32-byte program, not BIP16 P2SH-wrapped, script path spending, leaf version 0xc0; see BIP 342
 };
 
+namespace qcoin::v2 { struct Attestation; } // Qcoin / Option B (fork/src/script/witness_v2.h)
+
 struct ScriptExecutionData
 {
     //! Whether m_tapleaf_hash is initialized.
@@ -236,6 +238,11 @@ struct ScriptExecutionData
 
     //! The hash of the corresponding output
     std::optional<uint256> m_output_hash;
+
+    //! Qcoin / Option B: the input's parsed attestation while a witness v2 leaf script runs (nullptr otherwise).
+    const qcoin::v2::Attestation* m_mldsa_attestation = nullptr;
+    //! Qcoin: bit i is set once OP_CHECKMLDSAVERIFY has verified attestation entry i.
+    uint8_t m_mldsa_entries_verified = 0;
 };
 
 /** Signature hash sizes */

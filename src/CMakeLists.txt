@@ -108,6 +108,10 @@ if(QCOIN_WITNESS_V2_EXPERIMENTAL)
   add_executable(qcoin-v2-selftest ${PROJECT_SOURCE_DIR}/fork/test/v2_selftest.cpp)
   target_link_libraries(qcoin-v2-selftest PRIVATE core_interface bitcoin_consensus bitcoin_crypto secp256k1 qcoin_pqc)
 endif()
+# Qcoin: builds and signs a witness v2 script-path spend for fork/test/regtest_v2_scriptpath.sh
+# (the wallet signs key paths only). Both configurations; not part of the default build.
+add_executable(qcoin-v2-scriptpath EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/fork/test/v2_scriptpath_tool.cpp)
+target_link_libraries(qcoin-v2-scriptpath PRIVATE core_interface bitcoin_consensus bitcoin_crypto secp256k1 qcoin_pqc)
 
 if(WITH_ZMQ)
   add_subdirectory(zmq)

@@ -22,7 +22,7 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
-#include "../../fork/src/script/witness_v2.h"  // Qcoin Option B: segwit v2 ML-DSA attestation (stub)
+#include "../../fork/src/script/witness_v2.h"  // Qcoin Option B: segwit v2 ML-DSA attestation outputs
 
 typedef std::vector<unsigned char> valtype;
 
@@ -603,7 +603,42 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     break;
                 }
 
-                case OP_NOP1: case OP_NOP4: case OP_NOP5:
+                case OP_NOP4: // OP_CHECKMLDSAVERIFY inside a Qcoin witness v2 leaf; a NOP everywhere else
+                {
+                    if (sigversion == SigVersion::TAPSCRIPT && execdata.m_mldsa_attestation) {
+                        // (pk_hash i -- ): verify attestation entry i, whose SHA256(pk) must be pk_hash,
+                        // over the section 6 message built from the leaf sighash. Fails the script on
+                        // any mismatch; an entry may be verified only once.
+                        if (stack.size() < 2) return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                        const CScriptNum idx(stacktop(-1), fRequireMinimal);
+                        const valtype& pk_hash = stacktop(-2);
+                        const auto& entries = execdata.m_mldsa_attestation->entries;
+                        if (idx < 0 || idx >= int64_t(entries.size())) return set_error(serror, SCRIPT_ERR_CHECKMLDSAVERIFY);
+                        const size_t i = size_t(idx.getint());
+                        if (execdata.m_mldsa_entries_verified & (1u << i)) return set_error(serror, SCRIPT_ERR_CHECKMLDSAVERIFY);
+                        const auto& entry = entries[i];
+                        const uint256 want = qcoin::v2::PubKeyHash(entry.pubkey);
+                        if (pk_hash.size() != want.size() || !std::equal(want.begin(), want.end(), pk_hash.begin())) {
+                            return set_error(serror, SCRIPT_ERR_CHECKMLDSAVERIFY);
+                        }
+                        // Same validation-weight budget as a passing tapscript signature check.
+                        assert(execdata.m_validation_weight_left_init);
+                        execdata.m_validation_weight_left -= VALIDATION_WEIGHT_PER_SIGOP_PASSED;
+                        if (execdata.m_validation_weight_left < 0) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
+                        if (!checker.CheckMlDsaSignature(entry.signature, entry.pubkey, entry.param_id, sigversion, execdata, serror)) {
+                            return false; // serror is set
+                        }
+                        execdata.m_mldsa_entries_verified |= uint8_t(1u << i);
+                        popstack(stack);
+                        popstack(stack);
+                        break;
+                    }
+                    if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
+                        return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
+                }
+                break;
+
+                case OP_NOP1: case OP_NOP5:
                 case OP_NOP6: case OP_NOP7: case OP_NOP8: case OP_NOP9: case OP_NOP10:
                 {
                     if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
@@ -1070,6 +1105,9 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 case OP_CHECKSIG:
                 case OP_CHECKSIGVERIFY:
                 {
+                    // Qcoin: no ECDSA or Schnorr checks inside a witness v2 ML-DSA leaf.
+                    if (execdata.m_mldsa_attestation) return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
+
                     // (sig pubkey -- bool)
                     if (stack.size() < 2)
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
@@ -1094,6 +1132,9 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 
                 case OP_CHECKSIGADD:
                 {
+                    // Qcoin: no ECDSA or Schnorr checks inside a witness v2 ML-DSA leaf.
+                    if (execdata.m_mldsa_attestation) return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
+
                     // OP_CHECKSIGADD is only available in Tapscript
                     if (sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0) return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
 
@@ -1757,9 +1798,10 @@ bool GenericTransactionSignatureChecker<T>::CheckSchnorrSignature(std::span<cons
 template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckMlDsaSignature(std::span<const unsigned char> sig, std::span<const unsigned char> pubkey, uint8_t param_id, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const
 {
-    // Qcoin / Option B, BIP section 6. Key path only for now (sigversion TAPROOT);
-    // the script path (TAPSCRIPT-like leaf semantics) is not implemented.
-    assert(sigversion == SigVersion::TAPROOT);
+    // Qcoin / Option B, BIP section 6. TAPROOT for the key path; TAPSCRIPT for a
+    // leaf script, where the sighash also commits to the leaf hash and the
+    // code-separator position (BIP 342 extension).
+    assert(sigversion == SigVersion::TAPROOT || sigversion == SigVersion::TAPSCRIPT);
     const auto sizes = qcoin::v2::SizesFor(param_id);
     if (!sizes || pubkey.size() != sizes->pk || sig.size() != sizes->sig) return set_error(serror, SCRIPT_ERR_MLDSA_ATTESTATION);
     // FIPS 204 canonical hint encoding (section 6): checked before any cryptography so a
@@ -1879,6 +1921,8 @@ static bool ExecuteWitnessScript(const std::span<const valtype>& stack_span, con
             }
             // New opcodes will be listed here. May use a different sigversion to modify existing opcodes.
             if (IsOpSuccess(opcode)) {
+                // Qcoin: a witness v2 ML-DSA leaf may not contain OP_SUCCESSx (section 5).
+                if (execdata.m_mldsa_attestation) return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
                 if (flags & SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS) {
                     return set_error(serror, SCRIPT_ERR_DISCOURAGE_OP_SUCCESS);
                 }
@@ -1972,9 +2016,10 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         // v2 defines no annex (BIP 110 rule 4 analysis); the attestation prefix 0x51 is distinct from 0x50.
         execdata.m_annex_init = true;
         execdata.m_annex_present = false;
-        if (stack.empty() && att->entries.size() == 1) {
-            // Key path (section 4): commitment must match, then ML-DSA.Verify over the
-            // section 6 message with ctx BIP-MLDSAv2 using the attested public key.
+        if (stack.empty()) {
+            // Key path (section 4): exactly one entry; the commitment must match, then
+            // ML-DSA.Verify over the section 6 message with ctx BIP-MLDSAv2.
+            if (att->entries.size() != 1) return set_error(serror, SCRIPT_ERR_MLDSA_ATTESTATION);
             const auto& entry = att->entries[0];
             if (!qcoin::v2::CheckCommitment(std::span<const uint8_t>(program.data(), program.size()), entry, {})) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
@@ -1984,7 +2029,47 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             }
             return set_success(serror);
         }
-        return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR); // TODO(qcoin): script path + OP_CHECKMLDSAVERIFY (section 5)
+        // Script path (section 5): <inputs...> <leaf script> <control block> before the attestation.
+        if (stack.size() < 2) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        const valtype& control = SpanPopBack(stack);
+        const valtype& script = SpanPopBack(stack);
+        if (!qcoin::v2::IsValidControlBlockSize(control.size())) {
+            return set_error(serror, SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE);
+        }
+        const uint8_t leaf_version = control[0] & qcoin::v2::LEAF_VERSION_MASK;
+        execdata.m_tapleaf_hash = qcoin::v2::LeafHash(leaf_version, std::span<const uint8_t>(script.data(), script.size()));
+        {
+            // Q must commit to the internal key named in the control block together with
+            // the Merkle root reached from this leaf along the control block's path.
+            const std::span<const uint8_t> cspan(control.data(), control.size());
+            const uint256 merkle_root = qcoin::v2::MerkleRootFromControl(cspan, execdata.m_tapleaf_hash);
+            uint256 internal_pk_hash;
+            std::copy(cspan.begin() + 2, cspan.begin() + qcoin::v2::CONTROL_BASE_SIZE, internal_pk_hash.begin());
+            const uint256 q = qcoin::v2::ComputeCommitment(control[1], internal_pk_hash, std::span<const uint8_t>(merkle_root.begin(), merkle_root.size()));
+            if (!std::equal(q.begin(), q.end(), program.begin())) {
+                return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+            }
+        }
+        execdata.m_tapleaf_hash_init = true;
+        if (leaf_version == qcoin::v2::LEAF_VERSION_MLDSA) {
+            // Leaf version 0xc0: tapscript semantics with OP_CHECKMLDSAVERIFY (see witness_v2.h).
+            exec_script = CScript(script.begin(), script.end());
+            execdata.m_validation_weight_left = ::GetSerializeSize(witness.stack) + VALIDATION_WEIGHT_OFFSET;
+            execdata.m_validation_weight_left_init = true;
+            execdata.m_mldsa_attestation = &*att;
+            execdata.m_mldsa_entries_verified = 0;
+            if (!ExecuteWitnessScript(stack, exec_script, flags, SigVersion::TAPSCRIPT, checker, execdata, serror)) {
+                return false; // serror is set
+            }
+            // Every attested entry must have been consumed by exactly one OP_CHECKMLDSAVERIFY.
+            const uint8_t all = static_cast<uint8_t>((1u << att->entries.size()) - 1);
+            if (execdata.m_mldsa_entries_verified != all) return set_error(serror, SCRIPT_ERR_MLDSA_ENTRY_UNUSED);
+            return set_success(serror);
+        }
+        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION) {
+            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION);
+        }
+        return set_success(serror); // unknown leaf version: upgradable, as BIP 341
     }
 
     if (witversion == 0) {

@@ -1,4 +1,4 @@
-// Qcoin / Option B self-test: construct and verify a key-path segwit v2 ML-DSA spend.
+// Qcoin / Option B self-test: construct and verify key-path and script-path segwit v2 ML-DSA spends.
 //
 // Built only with -DQCOIN_WITNESS_V2_EXPERIMENTAL=ON. Exits 0 when every check
 // passes. This is not a unit test in the Boost framework (BUILD_TESTS is off
@@ -90,11 +90,76 @@ struct Fixture {
     }
 };
 
+/** One script-path output (internal key + one leaf + Merkle path) and a transaction spending it. */
+struct ScriptPathCase {
+    uint8_t param_id{qcoin::v2::PARAM_ID_MLDSA44};
+    uint8_t leaf_version{qcoin::v2::LEAF_VERSION_MLDSA};
+    uint256 internal_pk_hash;
+    CScript leaf;
+    std::vector<uint256> path;
+    uint256 leaf_hash, root, q;
+    CScript spk;
+    std::vector<uint8_t> control;
+    CMutableTransaction spend;
+    PrecomputedTransactionData txdata;
+    const CAmount amount{COIN};
+
+    void Build(const uint256& internal, const CScript& l, std::vector<uint256> p, uint8_t lv = qcoin::v2::LEAF_VERSION_MLDSA)
+    {
+        using namespace qcoin::v2;
+        leaf_version = lv;
+        internal_pk_hash = internal; leaf = l; path = std::move(p);
+        leaf_hash = LeafHash(leaf_version, Span(leaf));
+        root = leaf_hash;
+        for (const uint256& n : path) root = BranchHash(root, n);
+        q = ComputeCommitment(param_id, internal_pk_hash, std::span<const uint8_t>(root.begin(), root.size()));
+        spk = CScript() << OP_2 << std::vector<unsigned char>(q.begin(), q.end());
+        control = BuildControlBlock(leaf_version, param_id, internal_pk_hash, path);
+        CMutableTransaction funding; funding.version = 2; funding.vout.emplace_back(amount, spk);
+        spend = CMutableTransaction{}; spend.version = 2;
+        spend.vin.emplace_back(COutPoint(funding.GetHash(), 0));
+        spend.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+        txdata.Init(spend, std::vector<CTxOut>{funding.vout[0]}, /*force=*/true);
+    }
+    uint256 LeafSighash() const
+    {
+        ScriptExecutionData ed; ed.m_annex_init = true; ed.m_annex_present = false;
+        ed.m_tapleaf_hash = leaf_hash; ed.m_tapleaf_hash_init = true;
+        ed.m_codeseparator_pos = 0xFFFFFFFFUL; ed.m_codeseparator_pos_init = true;
+        uint256 h;
+        if (!SignatureHashSchnorr(h, ed, spend, 0, SIGHASH_DEFAULT, SigVersion::TAPSCRIPT, txdata, MissingDataBehavior::FAIL)) std::abort();
+        return h;
+    }
+    uint256 KeyPathSighash() const
+    {
+        ScriptExecutionData ed; ed.m_annex_init = true; ed.m_annex_present = false;
+        uint256 h;
+        if (!SignatureHashSchnorr(h, ed, spend, 0, SIGHASH_DEFAULT, SigVersion::TAPROOT, txdata, MissingDataBehavior::FAIL)) std::abort();
+        return h;
+    }
+    std::vector<uint8_t> SignWith(const qcoin::pqc::MlDsaKeyPair& k, const uint256& sighash) const
+    {
+        const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(param_id, qcoin::v2::PubKeyHash(Span(k.pk)), sighash);
+        const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
+        std::vector<uint8_t> s;
+        if (!qcoin::pqc::MlDsaSignCtx(qcoin::pqc::SigScheme::MLDSA44, Span(k.sk), msg, ctx, s)) std::abort();
+        return s;
+    }
+    std::vector<unsigned char> LeafBytes() const { return {leaf.begin(), leaf.end()}; }
+    bool Verify(std::vector<std::vector<unsigned char>> stack, ScriptError& err,
+                script_verify_flags flags = script_verify_flags{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT | SCRIPT_VERIFY_MLDSA_V2 | SCRIPT_VERIFY_MINIMALDATA}) const
+    {
+        CScriptWitness w; w.stack = std::move(stack);
+        MutableTransactionSignatureChecker checker(&spend, 0, amount, txdata, MissingDataBehavior::FAIL);
+        return VerifyScript(CScript(), spk, &w, flags, checker, &err);
+    }
+};
+
 } // namespace
 
 int main()
 {
-    std::printf("qcoin-v2-selftest: segwit v2 ML-DSA-44 key-path spend\n");
+    std::printf("qcoin-v2-selftest: segwit v2 ML-DSA-44 key-path and script-path spends\n");
     Fixture f;
     Check(f.Build(), "fixture built (ML-DSA-44 keygen, OP_2 <Q> output, spending tx)");
     std::printf("  pk=%zu bytes  Q=%s\n", f.kp.pk.size(), f.commitment.ToString().substr(0, 16).c_str());
@@ -220,6 +285,122 @@ int main()
         }
         // 9e. wrong length is not canonical either
         Check(!IsCanonicalMlDsaSignature(f.param_id, std::span<const uint8_t>(sig.data(), sig.size() - 1)), "truncated signature -> not canonical");
+    }
+
+    // 10. Script path (section 5): <inputs> <leaf> <control> <attestation>, OP_CHECKMLDSAVERIFY
+    {
+        using namespace qcoin::v2;
+        qcoin::pqc::MlDsaKeyPair leafkey;
+        Check(qcoin::pqc::MlDsaKeygen(qcoin::pqc::SigScheme::MLDSA44, leafkey), "leaf key generated");
+        const uint256 leaf_pk_hash = PubKeyHash(Span(leafkey.pk));
+        const uint256 sibling = LeafHash(LEAF_VERSION_MLDSA, Span(CScript() << OP_RETURN)); // an unrelated second leaf
+        const std::vector<unsigned char> pkh_leaf(leaf_pk_hash.begin(), leaf_pk_hash.end());
+        const std::vector<unsigned char> pkh_internal(f.pk_hash.begin(), f.pk_hash.end());
+        const auto err_s = [](ScriptError e) { return ScriptErrorString(e); };
+
+        // A: 1-of-1 leaf on entry 0, two-leaf tree (one Merkle node), internal key = fixture key
+        ScriptPathCase A;
+        A.Build(f.pk_hash, SingleKeyLeaf(leaf_pk_hash, 0), {sibling});
+        Check(A.control.size() == CONTROL_BASE_SIZE + CONTROL_NODE_SIZE, "control block is 34-byte base + one 32-byte node");
+        Check(A.leaf == (CScript() << pkh_leaf << OP_0 << OP_NOP4 << OP_1), "1-of-1 leaf is <pk_hash> OP_0 OP_CHECKMLDSAVERIFY(0xb3) OP_1");
+        const std::vector<uint8_t> leaf_sig = A.SignWith(leafkey, A.LeafSighash());
+        const auto att1 = BuildAttestation(A.param_id, Span(leafkey.pk), leaf_sig);
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            const bool ok = A.Verify({A.LeafBytes(), A.control, att1}, err);
+            Check(ok && err == SCRIPT_ERR_OK, "10a. script-path spend (1-of-1 OP_CHECKMLDSAVERIFY leaf, one-node path) verifies");
+            if (!ok) std::printf("  error: %s\n", err_s(err).c_str());
+            Check(A.Verify({A.LeafBytes(), A.control, att1}, err, script_verify_flags{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT | SCRIPT_VERIFY_MLDSA_V2 | SCRIPT_VERIFY_MINIMALDATA | SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS | SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS | SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION}),
+                  "10a'. same spend passes with the policy DISCOURAGE flags (OP_NOP4 in a v2 leaf is not an upgradable NOP)");
+        }
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            Check(!A.Verify({BuildAttestation(A.param_id, Span(f.kp.pk), A.SignWith(f.kp, A.KeyPathSighash()))}, err) && err == SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH,
+                  "10b. key-path attestation alone cannot spend a script-path output (Merkle root is committed)");
+        }
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto bad = A.control; bad.back() ^= 0x01;
+            Check(!A.Verify({A.LeafBytes(), bad, att1}, err) && err == SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH, "10c. wrong Merkle node -> WITNESS_PROGRAM_MISMATCH");
+            auto bad2 = A.control; bad2[1] = PARAM_ID_MLDSA65;
+            Check(!A.Verify({A.LeafBytes(), bad2, att1}, err) && err == SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH, "10c'. wrong internal param_id -> WITNESS_PROGRAM_MISMATCH");
+        }
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto bad = A.control; bad.push_back(0x00);
+            Check(!A.Verify({A.LeafBytes(), bad, att1}, err) && err == SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE, "10d. misaligned control block -> TAPROOT_WRONG_CONTROL_SIZE");
+            Check(!A.Verify({A.LeafBytes(), att1}, err) && err == SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH, "10d'. leaf without control block -> WITNESS_PROGRAM_MISMATCH");
+        }
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            Check(!A.Verify({A.LeafBytes(), A.control, BuildAttestation(A.param_id, Span(f.kp.pk), A.SignWith(f.kp, A.LeafSighash()))}, err) && err == SCRIPT_ERR_CHECKMLDSAVERIFY,
+                  "10e. attested key is not the leaf's pk_hash -> SCRIPT_ERR_CHECKMLDSAVERIFY");
+        }
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto bad = leaf_sig; bad[50] ^= 0x01;
+            Check(!A.Verify({A.LeafBytes(), A.control, BuildAttestation(A.param_id, Span(leafkey.pk), bad)}, err) && err == SCRIPT_ERR_MLDSA_SIG, "10f. corrupted leaf signature -> SCRIPT_ERR_MLDSA_SIG");
+        }
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            Check(!A.Verify({A.LeafBytes(), A.control, BuildAttestation(A.param_id, Span(leafkey.pk), A.SignWith(leafkey, A.KeyPathSighash()))}, err) && err == SCRIPT_ERR_MLDSA_SIG,
+                  "10g. signature over the key-path sighash fails in the leaf (leaf sighash commits to the leaf hash)");
+        }
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto att2 = att1;
+            Check(AppendAttestationEntry(att2, A.param_id, Span(f.kp.pk), A.SignWith(f.kp, A.LeafSighash())), "two-entry attestation built");
+            Check(!A.Verify({A.LeafBytes(), A.control, att2}, err) && err == SCRIPT_ERR_MLDSA_ENTRY_UNUSED, "10h. unverified second entry -> SCRIPT_ERR_MLDSA_ENTRY_UNUSED");
+        }
+        // B: 2-of-2 leaf consuming entries 0 (leaf key) and 1 (fixture key); single-leaf tree
+        {
+            ScriptPathCase B;
+            B.Build(f.pk_hash, CScript() << pkh_leaf << OP_0 << OP_CHECKMLDSAVERIFY << pkh_internal << OP_1 << OP_CHECKMLDSAVERIFY << OP_1, {});
+            auto att = BuildAttestation(B.param_id, Span(leafkey.pk), B.SignWith(leafkey, B.LeafSighash()));
+            AppendAttestationEntry(att, B.param_id, Span(f.kp.pk), B.SignWith(f.kp, B.LeafSighash()));
+            ScriptError err{SCRIPT_ERR_OK};
+            const bool ok = B.Verify({B.LeafBytes(), B.control, att}, err);
+            Check(ok && err == SCRIPT_ERR_OK, "10i. 2-of-2 leaf with a two-entry attestation verifies (no Merkle path)");
+            if (!ok) std::printf("  error: %s\n", err_s(err).c_str());
+            Check(B.control.size() == CONTROL_BASE_SIZE, "  control block for a single leaf is 34 bytes");
+            // swapped entries: entry 0 is now the fixture key, so the first check fails
+            auto swapped = BuildAttestation(B.param_id, Span(f.kp.pk), B.SignWith(f.kp, B.LeafSighash()));
+            AppendAttestationEntry(swapped, B.param_id, Span(leafkey.pk), B.SignWith(leafkey, B.LeafSighash()));
+            Check(!B.Verify({B.LeafBytes(), B.control, swapped}, err) && err == SCRIPT_ERR_CHECKMLDSAVERIFY, "10i'. entries in the wrong order -> SCRIPT_ERR_CHECKMLDSAVERIFY");
+        }
+        // C: the same entry verified twice
+        {
+            ScriptPathCase C;
+            C.Build(f.pk_hash, CScript() << pkh_leaf << OP_0 << OP_CHECKMLDSAVERIFY << pkh_leaf << OP_0 << OP_CHECKMLDSAVERIFY << OP_1, {});
+            ScriptError err{SCRIPT_ERR_OK};
+            Check(!C.Verify({C.LeafBytes(), C.control, BuildAttestation(C.param_id, Span(leafkey.pk), C.SignWith(leafkey, C.LeafSighash()))}, err) && err == SCRIPT_ERR_CHECKMLDSAVERIFY,
+                  "10j. verifying the same entry twice -> SCRIPT_ERR_CHECKMLDSAVERIFY");
+            ScriptPathCase C2;
+            C2.Build(f.pk_hash, CScript() << pkh_leaf << OP_1 << OP_CHECKMLDSAVERIFY << OP_1, {});
+            Check(!C2.Verify({C2.LeafBytes(), C2.control, BuildAttestation(C2.param_id, Span(leafkey.pk), C2.SignWith(leafkey, C2.LeafSighash()))}, err) && err == SCRIPT_ERR_CHECKMLDSAVERIFY,
+                  "10j'. entry index out of range -> SCRIPT_ERR_CHECKMLDSAVERIFY");
+        }
+        // D: OP_CHECKSIG and OP_SUCCESSx are invalid inside a v2 leaf
+        {
+            ScriptPathCase D;
+            D.Build(f.pk_hash, CScript() << pkh_leaf << OP_0 << OP_CHECKMLDSAVERIFY << OP_0 << OP_0 << OP_CHECKSIG, {});
+            ScriptError err{SCRIPT_ERR_OK};
+            Check(!D.Verify({D.LeafBytes(), D.control, BuildAttestation(D.param_id, Span(leafkey.pk), D.SignWith(leafkey, D.LeafSighash()))}, err) && err == SCRIPT_ERR_BAD_OPCODE,
+                  "10k. OP_CHECKSIG inside a v2 leaf -> SCRIPT_ERR_BAD_OPCODE");
+            ScriptPathCase E;
+            E.Build(f.pk_hash, CScript() << OP_RESERVED, {}); // 0x50 is OP_SUCCESS80 under tapscript
+            Check(!E.Verify({E.LeafBytes(), E.control, BuildAttestation(E.param_id, Span(leafkey.pk), E.SignWith(leafkey, E.LeafSighash()))}, err) && err == SCRIPT_ERR_BAD_OPCODE,
+                  "10l. OP_SUCCESSx inside a v2 leaf -> SCRIPT_ERR_BAD_OPCODE (tapscript would succeed)");
+        }
+        // F: unknown leaf version stays upgradable, as BIP 341
+        {
+            ScriptPathCase F;
+            F.Build(f.pk_hash, CScript() << OP_RETURN, {}, 0xc2);
+            ScriptError err{SCRIPT_ERR_OK};
+            Check(F.Verify({F.LeafBytes(), F.control, att1}, err), "10m. unknown leaf version 0xc2 -> success (upgradable)");
+            Check(!F.Verify({F.LeafBytes(), F.control, att1}, err, script_verify_flags{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT | SCRIPT_VERIFY_MLDSA_V2 | SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION}) && err == SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION,
+                  "10m'. unknown leaf version with the DISCOURAGE flag -> rejected (policy)");
+        }
     }
 
     // 8. Seeded keygen is deterministic and seed-sensitive

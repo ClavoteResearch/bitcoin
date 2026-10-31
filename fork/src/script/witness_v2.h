@@ -16,6 +16,7 @@
 
 #include <crypto/sha256.h>
 #include <hash.h>
+#include <script/script.h>
 #include <uint256.h>
 
 #include <oqs/oqs.h>
@@ -274,12 +275,100 @@ inline bool VerifyMlDsa(uint8_t param_id, std::span<const uint8_t> pubkey, std::
                                        pubkey.data()) == OQS_SUCCESS;
 }
 
-// ---- Section 5: script path (NOT IMPLEMENTED) ------------------------------
-// Remaining stack is <inputs...> <leaf script> <control block>; control block
-// <= 257 bytes; leaf scripts may not contain OP_SUCCESSx; OP_CHECKMLDSAVERIFY
-// (0xb3 / OP_NOP4) pops <pk_hash:32> <i:1> and verifies attestation entry i.
-inline constexpr size_t CONTROL_BLOCK_MAX_SIZE = 257;
+// ---- Section 5: script path -------------------------------------------------
+// Witness: <inputs...> <leaf script> <control block> <attestation>. The control
+// block is leaf_version || param_id || pk_hash || node*m: the internal key
+// (param_id, SHA256(pk)) that the output commits to together with the Merkle
+// root of the script tree, then the BIP 341 Merkle path (TapLeaf / TapBranch
+// tagged hashes). Leaf version 0xc0 runs the leaf with tapscript semantics plus
+// these changes: OP_SUCCESSx is invalid; OP_CHECKSIG, OP_CHECKSIGVERIFY and
+// OP_CHECKSIGADD are invalid (no ECDSA or Schnorr inside a v2 leaf); OP_NOP4
+// (0xb3) is OP_CHECKMLDSAVERIFY, which pops <pk_hash:32> <i>, requires
+// SHA256(pk_i) == pk_hash for attestation entry i, verifies that entry's
+// signature over the section 6 message built from the leaf sighash
+// (SigVersion::TAPSCRIPT: leaf hash and code-separator position committed as in
+// BIP 342), and fails the script otherwise. Every attestation entry must be
+// verified by exactly one OP_CHECKMLDSAVERIFY, so no unverified signature can
+// ride along in the witness. The BIP draft's section 5 text was not available
+// when this was written: the control-block layout (34-byte base, at most 8
+// nodes) and the exactly-once rule are this implementation's choices, recorded
+// in doc/WALLET-PQC.md, to be reconciled with the BIP.
+inline constexpr uint8_t LEAF_VERSION_MASK = 0xfe;
+inline constexpr uint8_t LEAF_VERSION_MLDSA = 0xc0;
+inline constexpr size_t CONTROL_BASE_SIZE = 1 + 1 + 32; //!< leaf_version || param_id || internal pk_hash
+inline constexpr size_t CONTROL_NODE_SIZE = 32;
+inline constexpr size_t CONTROL_MAX_NODE_COUNT = 8;
+inline constexpr size_t CONTROL_MAX_SIZE = CONTROL_BASE_SIZE + CONTROL_NODE_SIZE * CONTROL_MAX_NODE_COUNT;
 inline constexpr uint8_t OP_CHECKMLDSAVERIFY_CODE = 0xb3; // OP_NOP4 under v2 leaf semantics only
+
+/** Shape check for a control block: base size plus whole 32-byte nodes, at most CONTROL_MAX_NODE_COUNT. */
+inline bool IsValidControlBlockSize(size_t n)
+{
+    return n >= CONTROL_BASE_SIZE && n <= CONTROL_MAX_SIZE && (n - CONTROL_BASE_SIZE) % CONTROL_NODE_SIZE == 0;
+}
+
+/** Leaf hash: tagged_hash("TapLeaf", leaf_version || compact_size(len) || script), as BIP 341. */
+inline uint256 LeafHash(uint8_t leaf_version, std::span<const uint8_t> script)
+{
+    HashWriter w = TaggedHash("TapLeaf");
+    w << leaf_version << CompactSizeWriter(script.size()) << script;
+    return w.GetSHA256();
+}
+
+/** Branch hash: tagged_hash("TapBranch", sorted(a, b)), as BIP 341. */
+inline uint256 BranchHash(const uint256& a, const uint256& b)
+{
+    HashWriter w = TaggedHash("TapBranch");
+    if (std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end())) {
+        w << a << b;
+    } else {
+        w << b << a;
+    }
+    return w.GetSHA256();
+}
+
+/** Merkle root from a leaf hash and the nodes of a size-checked control block. */
+inline uint256 MerkleRootFromControl(std::span<const uint8_t> control, const uint256& leaf_hash)
+{
+    uint256 k = leaf_hash;
+    const size_t path_len = (control.size() - CONTROL_BASE_SIZE) / CONTROL_NODE_SIZE;
+    for (size_t i = 0; i < path_len; ++i) {
+        const auto node = control.subspan(CONTROL_BASE_SIZE + CONTROL_NODE_SIZE * i, CONTROL_NODE_SIZE);
+        uint256 n;
+        std::copy(node.begin(), node.end(), n.begin());
+        k = BranchHash(k, n);
+    }
+    return k;
+}
+
+/** Serialise a control block; `nodes` are the sibling hashes from the leaf up to the root. */
+inline std::vector<uint8_t> BuildControlBlock(uint8_t leaf_version, uint8_t param_id, const uint256& internal_pk_hash, std::span<const uint256> nodes)
+{
+    std::vector<uint8_t> out;
+    out.reserve(CONTROL_BASE_SIZE + CONTROL_NODE_SIZE * nodes.size());
+    out.push_back(leaf_version);
+    out.push_back(param_id);
+    out.insert(out.end(), internal_pk_hash.begin(), internal_pk_hash.end());
+    for (const uint256& n : nodes) out.insert(out.end(), n.begin(), n.end());
+    return out;
+}
+
+/** Append (param_id || pk || sig) to an attestation from BuildAttestation. False once 4 entries exist. */
+inline bool AppendAttestationEntry(std::vector<uint8_t>& att, uint8_t param_id, std::span<const uint8_t> pubkey, std::span<const uint8_t> signature)
+{
+    if (att.size() < 2 || att[0] != ATTESTATION_PREFIX || att[1] >= ATTESTATION_MAX_ENTRIES) return false;
+    ++att[1];
+    att.push_back(param_id);
+    att.insert(att.end(), pubkey.begin(), pubkey.end());
+    att.insert(att.end(), signature.begin(), signature.end());
+    return true;
+}
+
+/** The simplest leaf: <pk_hash> <i> OP_CHECKMLDSAVERIFY OP_1, a 1-of-1 on attestation entry i. */
+inline CScript SingleKeyLeaf(const uint256& pk_hash, int entry_index)
+{
+    return CScript() << std::vector<unsigned char>(pk_hash.begin(), pk_hash.end()) << entry_index << OP_CHECKMLDSAVERIFY << OP_1;
+}
 
 } // namespace qcoin::v2
 

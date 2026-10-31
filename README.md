@@ -54,8 +54,8 @@ Current state (October 2026):
 Build as upstream (`doc/build-*.md`) with liboqs installed and
 `-DENABLE_IPC=OFF`; the ML-DSA code lives under [fork/src](fork/src) and in
 marked `Qcoin` sections of `src/script`, `src/wallet`, `src/kernel/chainparams.cpp`
-and `src/validation.cpp`. Known open items (seed nodes, script
-path, dedicated address type) are tracked in
+and `src/validation.cpp`. Known open items (seed nodes, script-path
+wallet support, dedicated address type) are tracked in
 [doc/WALLET-PQC.md](doc/WALLET-PQC.md) under "Testnet readiness".
 
 The remainder of this file is the unchanged upstream Bitcoin Core README.

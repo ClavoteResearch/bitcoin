@@ -12,12 +12,13 @@ that states Qcoin's own rules.
 
 ## Current status
 
-Last refreshed at commit ffe9d44 (30 Oct 2026). Everything below is exercised by
+Last refreshed with the script-path commit (31 Oct 2026). Everything below is exercised by
 the shell tests in `fork/test/` on the default build unless marked otherwise.
 
 | Piece | Location | State |
 |---|---|---|
 | Witness v2 output (Option B) | `fork/src/script/witness_v2.h`, `script/interpreter.cpp` (`VerifyWitnessProgram`) | **Working.** `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| SHA256(pk))`. The spend's last witness element is the attestation `0x51 \|\| n \|\| param_id \|\| pk \|\| sig`; the interpreter checks the commitment and verifies the ML-DSA signature over `param_id \|\| pk_hash \|\| sighash` (BIP341 sighash, SIGHASH_DEFAULT) with context `BIP-MLDSAv2`. Param id `0x01` = ML-DSA-44 (3735-byte attestation). Signatures must be in FIPS 204 canonical hint encoding (`IsCanonicalMlDsaSignature`, checked before liboqs). Errors `SCRIPT_ERR_MLDSA_ATTESTATION` / `SCRIPT_ERR_MLDSA_SIG_ENCODING` / `SCRIPT_ERR_MLDSA_SIG`. Tests: `qcoin-v2-selftest`, `regtest_v2_canonical.sh`. |
+| Script path (`OP_CHECKMLDSAVERIFY`) | `fork/src/script/witness_v2.h` (section 5 helpers), `script/interpreter.cpp` (`VerifyWitnessProgram`, `EvalScript` case `OP_NOP4`), `fork/test/v2_scriptpath_tool.cpp` | **Working in consensus; wallet cannot create or sign it yet.** Witness `<inputs...> <leaf script> <control block> <attestation>`. Control block `leaf_version \|\| param_id \|\| internal pk_hash \|\| node*m` (34-byte base, at most 8 nodes); `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| pk_hash \|\| merkle_root)` with BIP 341 `TapLeaf`/`TapBranch` hashing. Leaf version `0xc0` runs with tapscript semantics and these changes: `OP_NOP4` (0xb3) is `OP_CHECKMLDSAVERIFY`, pops `<pk_hash:32> <i>`, requires `SHA256(pk_i) == pk_hash` and verifies entry *i* of the attestation over the BIP 342-style leaf sighash (`SigVersion::TAPSCRIPT`, so the leaf hash is committed); `OP_CHECKSIG`/`OP_CHECKSIGVERIFY`/`OP_CHECKSIGADD` and `OP_SUCCESSx` are invalid (`SCRIPT_ERR_BAD_OPCODE`); every attestation entry must be verified exactly once (`SCRIPT_ERR_MLDSA_ENTRY_UNUSED`, `SCRIPT_ERR_CHECKMLDSAVERIFY`). Unknown leaf versions stay upgradable as in BIP 341. The control-block layout and the exactly-once rule are this implementation's choices (the BIP's section 5 text was not available) and must be reconciled with the BIP before any public chain. `qcoin-v2-scriptpath` (both configurations, target not in the default build) derives keys from seeds, prints a 1-of-1 leaf output and signs a spend of it. Tests: `qcoin-v2-selftest` section 10, `regtest_v2_scriptpath.sh` (regtest; `CHAIN=qtctest` runs it on qtctest). |
 | Value rule (ML-DSA-only) | `fork/src/consensus/pq_value.h`, `validation.cpp`, `Consensus::Params::fMlDsaOnlyValue` | **Working.** On regtest and `qtctest`, once mldsav2 is active every output with value must be `OP_2 <32>`; ordinary ECDSA outputs (P2PKH, P2WPKH, P2TR, bare multisig, ...) are consensus-invalid in blocks (coinbase included) and in the mempool (`bad-txns-output-not-mldsa`). Zero-value outputs are unrestricted (OP_RETURN, witness commitment). Wallet: `getnewaddress`/`getrawchangeaddress` refuse, recipients and custom change must be v2, change is derived as a fresh ML-DSA key, `-walletsigscheme` defaults to mldsa44 and `ecdsa` is rejected. Qcoin is therefore a separate coin, not a Bitcoin soft fork; the Bitcoin chain parameters still in the tree keep Bitcoin's rules. Test: `regtest_pq_only.sh`. |
 | Activation | `Consensus::DEPLOYMENT_MLDSA_V2` ("mldsav2"), `SCRIPT_VERIFY_MLDSA_V2`, `validation.cpp` | **Working.** Buried deployment: height 0 on regtest (override `-testactivationheight=mldsav2@N`) and `qtctest`; never on mainnet/testnet/signet. Before activation v2 inputs are anyone-can-spend for blocks and rejected by the mempool (`mempool-script-verify-flag-failed`); after it the flag is enforced in blocks and policy, and `AreInputsStandard` accepts v2. Shown by `getdeploymentinfo`. Test: `regtest_v2_activation.sh`. |
 | Legacy ECDSA path | `script/interpreter.cpp` (`VerifyECDSASignature`) | **Upstream again.** The first experiment (commit 13d6b525) routed every legacy ECDSA check through an ML-DSA-87 stub with a secp256k1 fallback; that routing, `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. Legacy inputs never touch liboqs. What makes Qcoin incompatible with Bitcoin is the value rule above, not the script rules. |
@@ -538,7 +539,7 @@ new genesis or a soft fork of the testnet.
 | Legacy ECDSA-path routing | **Done.** `VerifyECDSASignature` is upstream `pubkey.Verify` again; `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. `regtest_qtctest.sh` confirms an ordinary P2WPKH spend next to a v2 spend. | Yes (done) |
 | Canonical ML-DSA signature encoding | **Done.** `qcoin::v2::IsCanonicalMlDsaSignature` re-implements the FIPS 204 HintBitUnpack acceptance rules (cumulative hint counts non-decreasing and at most omega, strictly increasing indices per polynomial, zero padding) and runs before liboqs; failures are `SCRIPT_ERR_MLDSA_SIG_ENCODING`. Consensus therefore does not depend on a library version's strictness. `regtest_v2_canonical.sh` re-encodes a real spend's hint area and shows the node rejects it while the original confirms. | Yes (done) |
 | Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
-| Script path | Not started. BIP section 5: `OP_CHECKMLDSAVERIFY` (0xb3), control block and leaf rules, leaf sighash extension, `wpq(KEY,{TREE})`. Key path only until then. | No for a key-path testnet; adding it later is a soft fork of the testnet |
+| Script path | **In progress.** Consensus done: `OP_CHECKMLDSAVERIFY` (0xb3) under leaf version 0xc0, control block `leaf_version \|\| param_id \|\| pk_hash \|\| nodes`, BIP 341 leaf/branch hashing, BIP 342-style leaf sighash, OP_SUCCESSx and OP_CHECKSIG* invalid in leaves, exactly-once verification of attestation entries; a 1-of-1 leaf spend confirms on regtest and qtctest via `qcoin-v2-scriptpath`. Open: the wallet (`wpq(KEY,{TREE})` descriptor, signer, PSBT fields), policy limits for leaf stack items, and reconciling the control-block layout with the BIP text. | No for a key-path testnet; the consensus rules are in before launch, so a later wallet does not need a soft fork |
 | Checkpoints / assumevalid / `chainTxData` | Open. Set once the chain has a few thousand blocks; irrelevant at launch. | No |
 | Proof-of-work regime | Decided for now: 1e00ffff (about 3 s per block on one CPU). The 1d00ffff genesis is pre-mined ("Raising the proof-of-work difficulty") if the chain needs to be harder. | No (changing it later means a new genesis) |
 | Dust and weight policy | Open. Dust threshold still assumes a 148-byte input; a v2 input is about 1 kvB. Worst-case per-block verification cost not benchmarked (BIP section 7). | No |
@@ -759,8 +760,8 @@ What changed in this step:
 
 Canonical signature encoding (section 6) is enforced by
 `IsCanonicalMlDsaSignature` ahead of the ML-DSA verify, and activation is the
-`mldsav2` buried deployment. Still open from section 6: the BIP 342-style
-extension of the sighash for the script path.
+`mldsav2` buried deployment. The script path uses the BIP 342-style leaf
+sighash (`SigVersion::TAPSCRIPT`, leaf hash and code-separator position committed).
 
 ## Option B checklist: what a spendable ML-DSA output needs
 
@@ -788,16 +789,18 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
       branch runs only when the flag is set; mempool strips it pre-activation.
 - [x] Key path: ML-DSA.Verify over the section 6 message (`CheckMlDsaSignature`;
       liboqs with ctx `BIP-MLDSAv2`).
-- [ ] Script path: control block <= 257 bytes, leaf hash and merkle proof as
-      BIP 341, OP_SUCCESSx forbidden in leaves, `SigVersion::MLDSA_V2`.
-- [ ] `OP_CHECKMLDSAVERIFY` at 0xb3 under v2 leaf semantics: pops `<i:1>` and
-      `<pk_hash:32>`, requires an attestation, i < n, SHA256(pk_i) == pk_hash,
-      ML-DSA.Verify(entry i).
-- [x] Dedicated `ScriptError` codes (`SCRIPT_ERR_MLDSA_ATTESTATION`, `SCRIPT_ERR_MLDSA_SIG`);
-      the script path still returns `SCRIPT_ERR_UNKNOWN_ERROR`.
-- [~] v2 sighash: key path uses `SignatureHashSchnorr(TAPROOT, SIGHASH_DEFAULT)`;
-      `param_id`/`pk_hash` are committed in the message, not the hash. Script-path
-      extension pending.
+- [x] Script path: control block `leaf_version || param_id || pk_hash || nodes`
+      (34 + 32*m bytes, m <= 8), leaf hash and Merkle proof as BIP 341, OP_SUCCESSx
+      and OP_CHECKSIG* invalid in leaves. Leaves run as `SigVersion::TAPSCRIPT` with
+      `ScriptExecutionData::m_mldsa_attestation` set (no new SigVersion).
+- [x] `OP_CHECKMLDSAVERIFY` at 0xb3 under v2 leaf semantics: pops `<pk_hash:32> <i>`,
+      requires i < n, SHA256(pk_i) == pk_hash, ML-DSA.Verify(entry i) over the leaf
+      sighash; each entry exactly once.
+- [x] Dedicated `ScriptError` codes (`SCRIPT_ERR_MLDSA_ATTESTATION`, `SCRIPT_ERR_MLDSA_SIG`,
+      `SCRIPT_ERR_MLDSA_SIG_ENCODING`, `SCRIPT_ERR_CHECKMLDSAVERIFY`, `SCRIPT_ERR_MLDSA_ENTRY_UNUSED`).
+- [x] v2 sighash: key path uses `SignatureHashSchnorr(TAPROOT, SIGHASH_DEFAULT)`, the
+      script path `SignatureHashSchnorr(TAPSCRIPT, SIGHASH_DEFAULT)` with the leaf hash;
+      `param_id`/`pk_hash` are committed in the message, not the hash.
 - [x] Revert commit 13d6b525 (ECDSA-path routing) and drop
       `QCOIN_ECDSA_FALLBACK`: `VerifyECDSASignature` is upstream again, `verify_stub.h` deleted.
 
@@ -831,14 +834,15 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
 
 ### 6. Parser and signer: `script/sign.cpp`, `script/interpreter.cpp`
 - [~] `ProduceSignature`: key path done (`CreateMlDsaAttestation`, witness `[attestation]`).
-      Script path pending.
+      Script-path signing exists only in `fork/test/v2_scriptpath_tool.cpp`, not in the wallet.
 - [~] PSBT round-trip works for key-path inputs (create unsigned, sign elsewhere,
       finalise). `DataFromTransaction` extraction of an attestation is not implemented.
 - [~] PSBT: proprietary `qcoin`/0 input field carrying the ML-DSA public key;
       finished attestations use `final_scriptwitness`. No partial form (none needed
       for the key path).
 - [~] Regtest script `fork/test/regtest_v2_spend.sh` funds and spends a `wpq()`
-      output (key path). Script path and a proper functional test pending.
+      output (key path); `regtest_v2_scriptpath.sh` spends a 1-of-1 leaf. A proper
+      functional test is pending.
 
 ### Exit criteria
 A regtest wallet with `-walletsigscheme=mldsa44 -addresstype=bech32m-v2`
@@ -853,7 +857,8 @@ encoding, commitment, v2 sighash and context, bech32m v2 addresses, `wpq()`,
 derivation, PSBT) is implemented and tested; see "Current status". What remains,
 with status, is the table under "Open items for public testnet". In short:
 
-- Consensus: script path (`OP_CHECKMLDSAVERIFY`, control block, leaf sighash).
+- Wallet: script-path descriptor `wpq(KEY,{TREE})`, signer and PSBT fields (the
+  consensus side of the script path is in).
 - Wallet and policy: dedicated `CTxDestination`/`OutputType` for v2; dust
   threshold from the v2 input size; a published derivation path; attestation
   extraction in `DataFromTransaction`.
