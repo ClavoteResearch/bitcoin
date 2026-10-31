@@ -87,6 +87,7 @@ typedef enum ScriptError_t
     /* Qcoin: segwit v2 ML-DSA attestation outputs */
     SCRIPT_ERR_MLDSA_ATTESTATION,
     SCRIPT_ERR_MLDSA_SIG,
+    SCRIPT_ERR_MLDSA_SIG_ENCODING,
 
     SCRIPT_ERR_ERROR_COUNT
 } ScriptError;

@@ -74,6 +74,56 @@ inline std::optional<uint8_t> ParamIdForPubKeyLen(size_t pk_len)
     return std::nullopt;
 }
 
+/**
+ * Hint-encoding parameters of a param_id (FIPS 204 Table 1): k polynomials in the
+ * hint vector h and omega, the maximum number of 1 bits in h.
+ */
+struct HintParams { size_t k; size_t omega; };
+inline std::optional<HintParams> HintParamsFor(uint8_t param_id)
+{
+    if (param_id == PARAM_ID_MLDSA44) return HintParams{4, 80};
+#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
+    if (param_id == PARAM_ID_MLDSA87_EXPERIMENTAL) return HintParams{8, 75};
+#endif
+    return std::nullopt;
+}
+
+/**
+ * Consensus-side canonical-encoding check for a FIPS 204 signature
+ * sigma = c_tilde || z || h. It re-implements the acceptance conditions of
+ * HintBitUnpack (FIPS 204 Algorithm 21) on the trailing omega + k bytes (h):
+ *   - y[omega + i], the cumulative hint count after polynomial i, is
+ *     non-decreasing and at most omega;
+ *   - hint indices within one polynomial are strictly increasing;
+ *   - every unused byte of the index area (from the last count up to omega) is 0.
+ * Every hint vector therefore has exactly one accepted encoding. The check runs
+ * before liboqs so consensus does not depend on the strictness of a particular
+ * library version, and so a valid spend has a single signature encoding (txid
+ * stability). c_tilde and z carry no redundancy: z is fixed-width field elements
+ * whose range the verifier itself enforces (||z|| < gamma1 - beta), and c_tilde
+ * is compared byte for byte.
+ */
+inline bool IsCanonicalMlDsaSignature(uint8_t param_id, std::span<const uint8_t> signature)
+{
+    const auto sizes = SizesFor(param_id);
+    const auto hp = HintParamsFor(param_id);
+    if (!sizes || !hp || signature.size() != sizes->sig) return false;
+    const std::span<const uint8_t> y = signature.last(hp->omega + hp->k);
+    size_t index = 0;
+    for (size_t i = 0; i < hp->k; ++i) {
+        const size_t count = y[hp->omega + i];
+        if (count < index || count > hp->omega) return false;
+        for (size_t j = index; j < count; ++j) {
+            if (j > index && y[j - 1] >= y[j]) return false; // strictly increasing within a polynomial
+        }
+        index = count;
+    }
+    for (size_t j = index; j < hp->omega; ++j) {
+        if (y[j] != 0) return false; // unused hint slots must be zero
+    }
+    return true;
+}
+
 /** liboqs algorithm name for a spendable param_id, or nullptr. */
 inline const char* OqsAlgFor(uint8_t param_id)
 {
@@ -92,7 +142,7 @@ inline constexpr size_t ATTESTATION_MAX_ENTRIES = 4;
 struct AttestationEntry {
     uint8_t param_id{0};
     std::span<const uint8_t> pubkey;    //!< FIPS 204 public key encoding
-    std::span<const uint8_t> signature; //!< FIPS 204 canonical signature encoding
+    std::span<const uint8_t> signature; //!< FIPS 204 signature encoding (canonical form enforced by IsCanonicalMlDsaSignature)
 };
 
 struct Attestation {
@@ -203,11 +253,9 @@ inline std::vector<uint8_t> BuildSignatureMessage(uint8_t param_id, const uint25
 /**
  * Pure ML-DSA verify of `signature` over `message` with ctx = SIGNATURE_CONTEXT,
  * using the parameter set named by param_id. Lengths must already match
- * SizesFor(param_id); returns false otherwise.
- *
- * NOT YET ENFORCED: canonical signature encoding (hint count <= omega, canonical
- * hints). liboqs accepts any decodable encoding, so a malleability pre-check is
- * still required before this can be consensus-grade.
+ * SizesFor(param_id); returns false otherwise. The signature must also pass
+ * IsCanonicalMlDsaSignature (the interpreter checks it first to report a
+ * distinct error; this is the backstop for any other caller).
  */
 inline bool VerifyMlDsa(uint8_t param_id, std::span<const uint8_t> pubkey, std::span<const uint8_t> message, std::span<const uint8_t> signature)
 {
@@ -215,6 +263,7 @@ inline bool VerifyMlDsa(uint8_t param_id, std::span<const uint8_t> pubkey, std::
     const char* alg = OqsAlgFor(param_id);
     if (!sizes || !alg) return false;
     if (pubkey.size() != sizes->pk || signature.size() != sizes->sig) return false;
+    if (!IsCanonicalMlDsaSignature(param_id, signature)) return false;
     if (!OQS_SIG_alg_is_enabled(alg)) return false;
     struct Del { void operator()(OQS_SIG* s) const noexcept { if (s) OQS_SIG_free(s); } };
     std::unique_ptr<OQS_SIG, Del> sig{OQS_SIG_new(alg)};

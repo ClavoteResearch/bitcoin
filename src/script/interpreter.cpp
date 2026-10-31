@@ -1762,6 +1762,9 @@ bool GenericTransactionSignatureChecker<T>::CheckMlDsaSignature(std::span<const 
     assert(sigversion == SigVersion::TAPROOT);
     const auto sizes = qcoin::v2::SizesFor(param_id);
     if (!sizes || pubkey.size() != sizes->pk || sig.size() != sizes->sig) return set_error(serror, SCRIPT_ERR_MLDSA_ATTESTATION);
+    // FIPS 204 canonical hint encoding (section 6): checked before any cryptography so a
+    // non-canonical re-encoding of a valid signature is invalid, not merely non-standard.
+    if (!qcoin::v2::IsCanonicalMlDsaSignature(param_id, sig)) return set_error(serror, SCRIPT_ERR_MLDSA_SIG_ENCODING);
     uint256 sighash;
     if (!this->txdata) return HandleMissingData(m_mdb);
     // v2 has no hashtype byte: always SIGHASH_DEFAULT over the BIP 341 hash.

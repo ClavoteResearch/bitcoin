@@ -12,7 +12,7 @@ the shell tests in `fork/test/` on the default build unless marked otherwise.
 
 | Piece | Location | State |
 |---|---|---|
-| Witness v2 output (Option B) | `fork/src/script/witness_v2.h`, `script/interpreter.cpp` (`VerifyWitnessProgram`) | **Working.** `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| SHA256(pk))`. The spend's last witness element is the attestation `0x51 \|\| n \|\| param_id \|\| pk \|\| sig`; the interpreter checks the commitment and verifies the ML-DSA signature over `param_id \|\| pk_hash \|\| sighash` (BIP341 sighash, SIGHASH_DEFAULT) with context `BIP-MLDSAv2`. Param id `0x01` = ML-DSA-44 (3735-byte attestation). Errors `SCRIPT_ERR_MLDSA_ATTESTATION` / `SCRIPT_ERR_MLDSA_SIG`. |
+| Witness v2 output (Option B) | `fork/src/script/witness_v2.h`, `script/interpreter.cpp` (`VerifyWitnessProgram`) | **Working.** `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| SHA256(pk))`. The spend's last witness element is the attestation `0x51 \|\| n \|\| param_id \|\| pk \|\| sig`; the interpreter checks the commitment and verifies the ML-DSA signature over `param_id \|\| pk_hash \|\| sighash` (BIP341 sighash, SIGHASH_DEFAULT) with context `BIP-MLDSAv2`. Param id `0x01` = ML-DSA-44 (3735-byte attestation). Signatures must be in FIPS 204 canonical hint encoding (`IsCanonicalMlDsaSignature`, checked before liboqs). Errors `SCRIPT_ERR_MLDSA_ATTESTATION` / `SCRIPT_ERR_MLDSA_SIG_ENCODING` / `SCRIPT_ERR_MLDSA_SIG`. Tests: `qcoin-v2-selftest`, `regtest_v2_canonical.sh`. |
 | Activation | `Consensus::DEPLOYMENT_MLDSA_V2` ("mldsav2"), `SCRIPT_VERIFY_MLDSA_V2`, `validation.cpp` | **Working.** Buried deployment: height 0 on regtest (override `-testactivationheight=mldsav2@N`) and `qtctest`; never on mainnet/testnet/signet. Before activation v2 inputs are anyone-can-spend for blocks and rejected by the mempool (`mempool-script-verify-flag-failed`); after it the flag is enforced in blocks and policy, and `AreInputsStandard` accepts v2. Shown by `getdeploymentinfo`. Test: `regtest_v2_activation.sh`. |
 | Legacy ECDSA path | `script/interpreter.cpp` (`VerifyECDSASignature`) | **Upstream again.** The first experiment (commit 13d6b525) routed every legacy ECDSA check through an ML-DSA-87 stub with a secp256k1 fallback; that routing, `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. Legacy inputs never touch liboqs, so the v2 rules are a genuine soft fork. Checked by the P2WPKH spend in `regtest_qtctest.sh`. |
 | ML-DSA primitives | `fork/src/pqc/pqc.{h,cpp}` (library `qcoin_pqc`) | **Working.** liboqs 0.14 wrappers: keygen (random and from a 32-byte seed via a temporary custom RNG under a mutex), sign/verify with context, HD master/child seed derivation, `SecureBytes` on Core's `secure_allocator`, `WipeSecret`. ML-DSA-44 and ML-DSA-87. |
@@ -458,7 +458,7 @@ new genesis or a soft fork of the testnet.
 | Item | Status | Before announcing? |
 |---|---|---|
 | Legacy ECDSA-path routing | **Done.** `VerifyECDSASignature` is upstream `pubkey.Verify` again; `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. `regtest_qtctest.sh` confirms an ordinary P2WPKH spend next to a v2 spend. | Yes (done) |
-| Canonical ML-DSA signature encoding | Open. liboqs accepts any valid encoding; add the FIPS 204 hint-count/canonical-hint check before `OQS_SIG_verify` in `witness_v2.h` so signatures are not malleable (txid stability). | Yes |
+| Canonical ML-DSA signature encoding | **Done.** `qcoin::v2::IsCanonicalMlDsaSignature` re-implements the FIPS 204 HintBitUnpack acceptance rules (cumulative hint counts non-decreasing and at most omega, strictly increasing indices per polynomial, zero padding) and runs before liboqs; failures are `SCRIPT_ERR_MLDSA_SIG_ENCODING`. Consensus therefore does not depend on a library version's strictness. `regtest_v2_canonical.sh` re-encodes a real spend's hint area and shows the node rejects it while the original confirms. | Yes (done) |
 | Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
 | Script path | Not started. BIP section 5: `OP_CHECKMLDSAVERIFY` (0xb3), control block and leaf rules, leaf sighash extension, `wpq(KEY,{TREE})`. Key path only until then. | No for a key-path testnet; adding it later is a soft fork of the testnet |
 | Checkpoints / assumevalid / `chainTxData` | Open. Set once the chain has a few thousand blocks; irrelevant at launch. | No |
@@ -649,9 +649,10 @@ bitcoin-cli -regtest generatetoaddress 1 $M                                     
 ```
 
 Not done: `-addresstype` / `getnewaddress` for v2 (needs the dedicated
-destination and `OutputType`; use `getnewmldsaaddress` instead), script-path `wpq(KEY,{TREE})`, PSBT fields,
-encrypted key storage, HD derivation, and any of the canonical-encoding and
-deployment-flag items below.
+destination and `OutputType`; use `getnewmldsaaddress` instead) and the
+script path `wpq(KEY,{TREE})`. PSBT, encrypted key storage, HD derivation,
+the canonical-encoding check and the deployment flag are all in place (see
+"Current status").
 
 ## Sighash and signature message (BIP section 6)
 
@@ -678,10 +679,10 @@ What changed in this step:
   `VerifyScript`. It asserts success, then asserts the right error for a
   corrupted signature, a wrong commitment, and a malformed attestation.
 
-Still open from section 6: canonical signature-encoding enforcement (liboqs
-accepts non-canonical hints), the BIP 342-style extension of the sighash for
-the script path, and the deployment flag so the branch is not active
-unconditionally once enabled.
+Canonical signature encoding (section 6) is enforced by
+`IsCanonicalMlDsaSignature` ahead of the ML-DSA verify, and activation is the
+`mldsav2` buried deployment. Still open from section 6: the BIP 342-style
+extension of the sighash for the script path.
 
 ## Option B checklist: what a spendable ML-DSA output needs
 
@@ -696,7 +697,9 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
       `param_id` 0x01 = ML-DSA-44 (1312/2420), 0x02 reserved, ctx `BIP-MLDSAv2`.
 - [x] `ParseAttestation`: fixed-layout parser with the no-slack-bytes rule.
 - [x] `PubKeyHash`, `ComputeCommitment`, `CheckCommitment`.
-- [ ] Canonical FIPS 204 signature-encoding check (hint count <= omega).
+- [x] Canonical FIPS 204 signature-encoding check (`IsCanonicalMlDsaSignature`: hint
+      counts <= omega and non-decreasing, strictly increasing indices, zero padding;
+      `SCRIPT_ERR_MLDSA_SIG_ENCODING`).
 - [x] Section 6 message builder: `param_id || pk_hash || sighash_v2`.
 
 ### 2. New witness version in consensus: `script/interpreter.cpp`
@@ -772,8 +775,7 @@ encoding, commitment, v2 sighash and context, bech32m v2 addresses, `wpq()`,
 derivation, PSBT) is implemented and tested; see "Current status". What remains,
 with status, is the table under "Open items for public testnet". In short:
 
-- Consensus: canonical signature-encoding check; script path
-  (`OP_CHECKMLDSAVERIFY`, control block, leaf sighash).
+- Consensus: script path (`OP_CHECKMLDSAVERIFY`, control block, leaf sighash).
 - Wallet and policy: dedicated `CTxDestination`/`OutputType` for v2; dust
   threshold from the v2 input size; a published derivation path; attestation
   extraction in `DataFromTransaction`.

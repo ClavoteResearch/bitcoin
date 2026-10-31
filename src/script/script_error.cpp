@@ -123,6 +123,8 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Malformed ML-DSA attestation";
         case SCRIPT_ERR_MLDSA_SIG:
             return "Invalid ML-DSA signature";
+        case SCRIPT_ERR_MLDSA_SIG_ENCODING:
+            return "Non-canonical ML-DSA signature encoding";
         case SCRIPT_ERR_UNKNOWN_ERROR:
         case SCRIPT_ERR_ERROR_COUNT:
             break;

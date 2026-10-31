@@ -172,6 +172,56 @@ int main()
         Check(!f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err) && err == SCRIPT_ERR_MLDSA_SIG, "with MLDSA_V2 flag: invalid attestation rejected");
     }
 
+    // 9. Canonical signature encoding (FIPS 204 HintBitUnpack rules), checked before liboqs
+    {
+        using qcoin::v2::IsCanonicalMlDsaSignature;
+        const auto hp = *qcoin::v2::HintParamsFor(f.param_id);
+        const size_t hoff = sig.size() - (hp.omega + hp.k); // start of the hint area h
+        Check(IsCanonicalMlDsaSignature(f.param_id, sig), "fresh liboqs signature is canonical");
+        const size_t total = sig[hoff + hp.omega + hp.k - 1];
+        std::printf("  hints used: %zu of %zu\n", total, hp.omega);
+        auto raw_oqs = [&](const std::vector<uint8_t>& s) {
+            const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(f.param_id, f.pk_hash, sighash);
+            const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
+            return qcoin::pqc::MlDsaVerifyCtx(qcoin::pqc::SigScheme::MLDSA44, Span(f.kp.pk), msg, ctx, s);
+        };
+        // 9a. garbage in the unused index area (same hint vector, different bytes)
+        if (total < hp.omega) {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto bad = sig; bad[hoff + hp.omega - 1] = 0x01;
+            Check(!IsCanonicalMlDsaSignature(f.param_id, bad), "non-zero padding in hint area -> not canonical");
+            const bool ok = f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err);
+            Check(!ok && err == SCRIPT_ERR_MLDSA_SIG_ENCODING, "padding-malleated signature -> SCRIPT_ERR_MLDSA_SIG_ENCODING");
+            std::printf("  (liboqs alone %s this encoding)\n", raw_oqs(bad) ? "ACCEPTS" : "rejects");
+        }
+        // 9b. cumulative count above omega
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto bad = sig; bad[hoff + hp.omega + hp.k - 1] = static_cast<uint8_t>(hp.omega + 1);
+            Check(!IsCanonicalMlDsaSignature(f.param_id, bad), "hint count > omega -> not canonical");
+            Check(!f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err) && err == SCRIPT_ERR_MLDSA_SIG_ENCODING, "hint count > omega -> SCRIPT_ERR_MLDSA_SIG_ENCODING");
+        }
+        // 9c. decreasing cumulative counts
+        {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto bad = sig; bad[hoff + hp.omega] = static_cast<uint8_t>(bad[hoff + hp.omega + 1] + 1);
+            Check(!IsCanonicalMlDsaSignature(f.param_id, bad), "decreasing cumulative hint counts -> not canonical");
+            Check(!f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err) && err == SCRIPT_ERR_MLDSA_SIG_ENCODING, "decreasing counts -> SCRIPT_ERR_MLDSA_SIG_ENCODING");
+        }
+        // 9d. repeated index inside the first polynomial (needs >= 2 hints there)
+        if (sig[hoff + hp.omega] >= 2) {
+            ScriptError err{SCRIPT_ERR_OK};
+            auto bad = sig; bad[hoff + 1] = bad[hoff + 0];
+            Check(!IsCanonicalMlDsaSignature(f.param_id, bad), "non-increasing hint index -> not canonical");
+            Check(!f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err) && err == SCRIPT_ERR_MLDSA_SIG_ENCODING, "repeated hint index -> SCRIPT_ERR_MLDSA_SIG_ENCODING");
+            std::printf("  (liboqs alone %s this encoding)\n", raw_oqs(bad) ? "ACCEPTS" : "rejects");
+        } else {
+            std::printf("  (9d skipped: first polynomial has < 2 hints)\n");
+        }
+        // 9e. wrong length is not canonical either
+        Check(!IsCanonicalMlDsaSignature(f.param_id, std::span<const uint8_t>(sig.data(), sig.size() - 1)), "truncated signature -> not canonical");
+    }
+
     // 8. Seeded keygen is deterministic and seed-sensitive
     {
         qcoin::pqc::SecureBytes master(32, 0x42);
