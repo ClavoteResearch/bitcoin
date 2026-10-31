@@ -146,6 +146,10 @@ enum class script_verify_flag_name : uint8_t {
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE,
 
+    // Qcoin / Option B: enforce witness v2 ML-DSA attestation rules (DEPLOYMENT_MLDSA_V2).
+    // Without it a 32-byte v2 program is an unknown upgradable witness version.
+    SCRIPT_VERIFY_MLDSA_V2,
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER

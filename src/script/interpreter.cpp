@@ -1429,9 +1429,7 @@ void PrecomputedTransactionData::Init(const T& txTo, std::vector<CTxOut>&& spent
         if (!txTo.vin[inpos].scriptWitness.IsNull()) {
             if (m_spent_outputs_ready && m_spent_outputs[inpos].scriptPubKey.size() == 2 + WITNESS_V1_TAPROOT_SIZE &&
                 (m_spent_outputs[inpos].scriptPubKey[0] == OP_1
-#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
                  || m_spent_outputs[inpos].scriptPubKey[0] == OP_2 // Qcoin / Option B: v2 key path uses the BIP 341 sighash
-#endif
                 )) {
                 // Treat every witness-bearing spend with 34-byte scriptPubKey that starts with OP_1 as a Taproot
                 // spend. This only works if spent_outputs was provided as well, but if it wasn't, actual validation
@@ -1961,15 +1959,12 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
     std::span stack{witness.stack};
     ScriptExecutionData execdata;
 
-    // Qcoin / Option B marker: a 32-byte non-P2SH witness v2 program is an
-    // ML-DSA attestation output. This is where the final witness element
-    // would be popped as the attestation (qcoin::v2::ParseAttestation), the
-    // output commitment checked (qcoin::v2::CheckCommitment), and the key-
-    // or script-path verified (sections 4-6 of the BIP). Until that lands,
-    // v2 falls through to the unknown-version branch below and stays
-    // anyone-can-spend-but-discouraged, exactly as upstream.
-#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
-    if (witversion == qcoin::v2::WITNESS_V2_VERSION && program.size() == qcoin::v2::WITNESS_V2_PROGRAM_SIZE && !is_p2sh) {
+    // Qcoin / Option B: a 32-byte non-P2SH witness v2 program is an ML-DSA
+    // attestation output. Enforced only when SCRIPT_VERIFY_MLDSA_V2 is set
+    // (consensus: DEPLOYMENT_MLDSA_V2 active; policy: STANDARD flags, stripped
+    // before activation). Without the flag v2 falls through to the
+    // unknown-version branch below: anyone-can-spend, discouraged by policy.
+    if ((flags & SCRIPT_VERIFY_MLDSA_V2) && witversion == qcoin::v2::WITNESS_V2_VERSION && program.size() == qcoin::v2::WITNESS_V2_PROGRAM_SIZE && !is_p2sh) {
         if (stack.empty()) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
         const valtype& last = stack.back();
         if (!qcoin::v2::LooksLikeAttestation(std::span<const uint8_t>(last.data(), last.size()))) {
@@ -1995,7 +1990,6 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         }
         return set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR); // TODO(qcoin): script path + OP_CHECKMLDSAVERIFY (section 5)
     }
-#endif
 
     if (witversion == 0) {
         if (program.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
@@ -2264,6 +2258,7 @@ const std::map<std::string, script_verify_flag_name>& ScriptFlagNamesToEnum()
         FLAG_NAME(WITNESS_PUBKEYTYPE),
         FLAG_NAME(CONST_SCRIPTCODE),
         FLAG_NAME(TAPROOT),
+        FLAG_NAME(MLDSA_V2),
         FLAG_NAME(DISCOURAGE_UPGRADABLE_PUBKEYTYPE),
         FLAG_NAME(DISCOURAGE_OP_SUCCESS),
         FLAG_NAME(DISCOURAGE_UPGRADABLE_TAPROOT_VERSION),

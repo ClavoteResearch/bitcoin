@@ -32,8 +32,11 @@ enum BuriedDeployment : int16_t {
     // SCRIPT_VERIFY_WITNESS is enforced from genesis, but the check for downloading
     // missing witness data is not. BIP 147 also relies on hardcoded activation height.
     DEPLOYMENT_SEGWIT,
+    // Qcoin / Option B: witness v2 ML-DSA attestation outputs (SCRIPT_VERIFY_MLDSA_V2).
+    // Buried (height-based) activation; see doc/WALLET-PQC.md.
+    DEPLOYMENT_MLDSA_V2,
 };
-constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_SEGWIT; }
+constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_MLDSA_V2; }
 
 enum DeploymentPos : uint16_t {
     DEPLOYMENT_TESTDUMMY,
@@ -108,6 +111,8 @@ struct Params {
      * Note that segwit v0 script rules are enforced on all blocks except the
      * BIP 16 exception blocks. */
     int SegwitHeight;
+    /** Qcoin: block height from which witness v2 ML-DSA rules are enforced (INT_MAX = never). */
+    int MLDSAv2Height;
     /** Don't warn about unknown BIP 9 activations below this height.
      * This prevents us from warning about the CSV, segwit and taproot activations. */
     int MinBIP9WarningHeight;
@@ -153,6 +158,8 @@ struct Params {
             return CSVHeight;
         case DEPLOYMENT_SEGWIT:
             return SegwitHeight;
+        case DEPLOYMENT_MLDSA_V2:
+            return MLDSAv2Height;
         } // no default case, so the compiler can warn about missing cases
         return std::numeric_limits<int>::max();
     }

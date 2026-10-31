@@ -80,11 +80,11 @@ struct Fixture {
         return h;
     }
 
-    bool Verify(const std::vector<uint8_t>& attestation, ScriptError& err) const
+    bool Verify(const std::vector<uint8_t>& attestation, ScriptError& err,
+                script_verify_flags flags = script_verify_flags{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT | SCRIPT_VERIFY_MLDSA_V2}) const
     {
         CScriptWitness witness;
         witness.stack.push_back(attestation);
-        const auto flags = SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT;
         MutableTransactionSignatureChecker checker(&spend, 0, amount, txdata, MissingDataBehavior::FAIL);
         return VerifyScript(CScript(), spk, &witness, flags, checker, &err);
     }
@@ -158,6 +158,18 @@ int main()
         qcoin::pqc::MlDsaSign(qcoin::pqc::SigScheme::MLDSA44, Span(f.kp.sk), msg, noctx);
         const bool ok = f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), noctx), err);
         Check(!ok && err == SCRIPT_ERR_MLDSA_SIG, "signature without ctx BIP-MLDSAv2 -> SCRIPT_ERR_MLDSA_SIG");
+    }
+
+    // 7b. Soft-fork semantics: without SCRIPT_VERIFY_MLDSA_V2 a v2 output is an unknown
+    //     upgradable version (anyone-can-spend), and policy discourages it.
+    {
+        ScriptError err{SCRIPT_ERR_OK};
+        auto bad = sig; bad[7] ^= 0x80;
+        const script_verify_flags no_flag{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT};
+        Check(f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err, no_flag), "without MLDSA_V2 flag: invalid attestation passes as an unknown witness version (pre-activation consensus)");
+        Check(!f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err, no_flag | SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) && err == SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM,
+              "without MLDSA_V2 flag + DISCOURAGE: rejected as upgradable witness (pre-activation policy)");
+        Check(!f.Verify(qcoin::v2::BuildAttestation(f.param_id, Span(f.kp.pk), bad), err) && err == SCRIPT_ERR_MLDSA_SIG, "with MLDSA_V2 flag: invalid attestation rejected");
     }
 
     // 8. Seeded keygen is deterministic and seed-sensitive

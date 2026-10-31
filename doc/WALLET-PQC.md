@@ -56,6 +56,73 @@ Nothing short of outputs that commit to an ML-DSA public key can make this pass.
 - No RPC exposes the keys; `listdescriptors true` cannot print a private form
   of `wpq()`.
 
+## Activation: DEPLOYMENT_MLDSA_V2
+
+The witness v2 path is no longer gated by a compile-time define. It is a
+buried (height-based) deployment, `Consensus::DEPLOYMENT_MLDSA_V2`, with a new
+script-verify flag `SCRIPT_VERIFY_MLDSA_V2`:
+
+- **Consensus.** `GetBlockScriptFlags` adds `SCRIPT_VERIFY_MLDSA_V2` from
+  `Consensus::Params::MLDSAv2Height`. Before that height a 32-byte witness v2
+  program is an unknown upgradable witness version, exactly as upstream
+  (anyone-can-spend in blocks), so activation is a soft fork.
+- **Policy.** `SCRIPT_VERIFY_MLDSA_V2` is in `STANDARD_SCRIPT_VERIFY_FLAGS`, and
+  `MemPoolAccept::PolicyScriptChecks` strips it until the deployment is active,
+  so pre-activation v2 spends are rejected with
+  `mempool-script-verify-flag-failed (Witness version reserved for soft-fork upgrades)`
+  and are not relayed. `AreInputsStandard` accepts v2 inputs and leaves the
+  decision to the script flags.
+- **Chains.** mainnet, testnet3, testnet4 and signet: `INT_MAX` (not deployed).
+  regtest: height 0 (always active) unless overridden with
+  `-testactivationheight=mldsav2@<height>`. `getdeploymentinfo` lists `mldsav2`
+  with its height and active state.
+- **Wallet.** Signing is independent of activation (the wallet verifies with
+  the full standard flags), so a wallet can prepare and sign a v2 spend before
+  activation; the node simply refuses to accept it until the height is reached.
+- **Build option.** `QCOIN_WITNESS_V2_EXPERIMENTAL` now only unlocks non-BIP
+  extras: the ML-DSA-87 `param_id` 0x7f and the `qcoin-v2-selftest` binary.
+  The default build contains the complete v2 path.
+
+## Testnet readiness
+
+What a public Qcoin testnet (its own chain params, `-walletsigscheme=mldsa44`)
+would get today, and what is still missing.
+
+Done:
+- Consensus: key-path witness v2 ML-DSA-44 verification over the BIP section 6
+  message with ctx `BIP-MLDSAv2`; output commitment check; buried-deployment
+  activation with the pre-activation soft-fork semantics above; `getdeploymentinfo`.
+- Policy: v2 spends standard once active, discouraged before; input sizing and
+  fee estimation through the inferred `wpq()` descriptor.
+- Wallet: `wpq(HEXPK)` descriptor, bech32m v2 addresses (`bc1z`/`tb1z`/`bcrt1z`
+  via `WitnessUnknown`), `getnewmldsaaddress`, HD derivation from the BIP32 root,
+  keys stored per descriptor in the wallet database, encrypted with the
+  passphrase, held in secure memory and wiped after signing, PSBT create/sign/
+  finalise with a proprietary public-key field, watch-only tracking.
+- Tests: `qcoin-v2-selftest` and the `fork/test/regtest_v2_*.sh` scripts
+  (spend, multi, encrypt, hd, psbt, activation).
+
+Missing before a public testnet:
+- **Chain parameters**: a Qcoin testnet `CChainParams` (magic, ports, genesis,
+  seeds, bech32 HRP, `MLDSAv2Height`), and a decision on whether legacy
+  ECDSA-path routing (commit 13d6b525, `QCOIN_ECDSA_FALLBACK`) is reverted; it
+  must be for a soft-fork design.
+- **Canonical signature encoding**: FIPS 204 hint-count/canonical-hint check
+  before `OQS_SIG_verify` (malleability, txid stability).
+- **Script path**: BIP sections 5 (`OP_CHECKMLDSAVERIFY`, control block, leaf
+  rules) and the v2 sighash extension for leaves; `wpq(KEY,{TREE})`.
+- **Dust and weight policy**: dust threshold from the ML-DSA spend size;
+  benchmark of worst-case per-block verification cost (BIP section 7).
+- **Address type plumbing**: dedicated `CTxDestination`/`OutputType` so
+  `getnewaddress`/`-addresstype` can produce v2 addresses.
+- **Derivation spec**: a published path and seed-expansion rule replacing the
+  single-level HMAC scheme; `encryptwallet` currently rotates the root.
+- **Test coverage**: Boost unit tests and Python functional tests (the current
+  checks are shell scripts), fuzz targets for the attestation parser and PSBT
+  field, and a BIP test-vector set (the BIP's vectors section is empty).
+- **Review**: the deterministic-RNG seeded keygen (`MlDsaKeygenFromSeed`) and
+  the proprietary PSBT field should be reviewed against the final BIP text.
+
 ## PSBT
 
 Witness v2 inputs work with the standard PSBT flow (`walletcreatefundedpsbt`,
@@ -220,7 +287,7 @@ What exists:
   scheme now only selects which ML-DSA parameter set the wallet generates and
   attests with.
 
-Regtest flow (see the `fork/test/regtest_v2_*.sh` scripts: spend, multi, encrypt, hd, psbt):
+Regtest flow (see the `fork/test/regtest_v2_*.sh` scripts: spend, multi, encrypt, hd, psbt, activation):
 
 ```bash
 bitcoind -regtest -walletsigscheme=mldsa44 -fallbackfee=0.0001 -daemon
@@ -287,8 +354,9 @@ define, v2 stays an unknown upgradable witness version exactly as upstream.
 ### 2. New witness version in consensus: `script/interpreter.cpp`
 - [x] Guarded v2 branch in `VerifyWitnessProgram` ahead of the v0/v1 chain
       that pops the attestation and checks the commitment (key path).
-- [ ] `SCRIPT_VERIFY_MLDSA_V2` flag plus deployment in `consensus/params.h`
-      and `deploymentinfo.cpp`; branch runs only when the flag is set.
+- [x] `SCRIPT_VERIFY_MLDSA_V2` flag plus buried `DEPLOYMENT_MLDSA_V2` in
+      `consensus/params.h`, `deploymentinfo.cpp`, `kernel/chainparams.cpp`; the
+      branch runs only when the flag is set; mempool strips it pre-activation.
 - [x] Key path: ML-DSA.Verify over the section 6 message (`CheckMlDsaSignature`;
       liboqs with ctx `BIP-MLDSAv2`).
 - [ ] Script path: control block <= 257 bytes, leaf hash and merkle proof as

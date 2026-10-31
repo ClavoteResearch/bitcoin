@@ -76,7 +76,7 @@ RPCMethod getnewmldsaaddress()
         "Qcoin experimental: generate a fresh ML-DSA keypair, store it in the development key store,\n"
         "import the matching wpq() descriptor and return its witness v2 address (bech32m, bc1z... / bcrt1z...).\n"
         "Requires the node to run with -walletsigscheme=mldsa44 (or mldsa87 in experimental builds).\n"
-        "Receiving works in every build; spending requires QCOIN_WITNESS_V2_EXPERIMENTAL=ON. See doc/WALLET-PQC.md.\n",
+        "Spending requires the mldsav2 deployment to be active on the chain (getdeploymentinfo). See doc/WALLET-PQC.md.\n",
         {
             {"label", RPCArg::Type::STR, RPCArg::Default{"mldsa"}, "The label name for the address to be linked to."},
         },

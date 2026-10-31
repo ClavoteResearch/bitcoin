@@ -3,9 +3,11 @@
 // This header collects the constants and the pure byte-level pieces of the
 // "Segwit v2: ML-DSA Post-Quantum Signatures" BIP draft so that consensus
 // (script/interpreter.cpp), the solver, descriptors, and address code can all
-// point at one definition. Nothing here is reachable from consensus unless the
-// build defines QCOIN_WITNESS_V2_EXPERIMENTAL; without it the interpreter keeps
-// treating witness v2 as an unknown, upgradable version exactly as upstream.
+// point at one definition. Consensus reaches this code only when
+// SCRIPT_VERIFY_MLDSA_V2 is set, i.e. once DEPLOYMENT_MLDSA_V2 is active for the
+// chain (-testactivationheight=mldsav2@<n> on regtest); otherwise the interpreter
+// treats witness v2 as an unknown, upgradable version exactly as upstream.
+// QCOIN_WITNESS_V2_EXPERIMENTAL only unlocks non-BIP extras (ML-DSA-87 param_id 0x7f).
 //
 // Spec references are to section numbers of docs/spec/bip-mldsa-formal.md in
 // the clavote-boop/BIP repository. See doc/WALLET-PQC.md for the checklist.

@@ -19,7 +19,6 @@
 
 using common::PSBTError;
 
-#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
 namespace {
 // Qcoin / Option B proprietary PSBT input field (BIP 174 type 0xFC):
 //   identifier = "qcoin", subtype = 0, value = param_id || ML-DSA public key
@@ -55,7 +54,6 @@ bool ParseMlDsaPubKeyField(const PSBTProprietary& p, uint8_t& param_id, std::vec
     return true;
 }
 } // namespace
-#endif
 
 PartiallySignedTransaction::PartiallySignedTransaction(const CMutableTransaction& tx, uint32_t version) : m_version(version)
 {
@@ -723,7 +721,6 @@ util::Expected<void, PSBTError> SignPSBTInput(const SigningProvider& provider, P
 
     bool is_qcoin_v2 = false;
     const SigningProvider* sign_provider = &provider;
-#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
     // Qcoin / Option B: witness v2 ML-DSA input. Publish the ML-DSA public key as a
     // proprietary field when we know it; otherwise take it from the field (if the
     // commitment checks out) so the signer can find the matching secret.
@@ -755,7 +752,6 @@ util::Expected<void, PSBTError> SignPSBTInput(const SigningProvider& provider, P
             }
         }
     }
-#endif
 
     // Get the sighash type
     // If both the field and the parameter are provided, they must match

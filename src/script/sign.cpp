@@ -802,7 +802,6 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
 {
     if (sigdata.complete) return true;
 
-#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
     {
         // Qcoin / Option B: witness v2 ML-DSA output. The witness is a single attestation
         // element; nothing goes through the script solver.
@@ -819,7 +818,6 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
             return sigdata.complete;
         }
     }
-#endif
 
     std::vector<valtype> result;
     TxoutType whichType;

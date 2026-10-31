@@ -232,15 +232,15 @@ TxValidationState ValidateInputsStandardness(const CTransaction& tx, const CCoin
             state.Invalid(TxValidationResult::TX_INPUTS_NOT_STANDARD, "bad-txns-nonstandard-inputs", strprintf("input %u script unknown", i));
             return state;
         } else if (whichType == TxoutType::WITNESS_UNKNOWN) {
-#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
             // Qcoin / Option B: a 32-byte witness v2 program is an ML-DSA attestation
-            // output; its spend is standard (the interpreter enforces the attestation).
+            // output. Whether its spend is standard is decided by the script flags:
+            // SCRIPT_VERIFY_MLDSA_V2 once DEPLOYMENT_MLDSA_V2 is active, otherwise
+            // DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM rejects it in PolicyScriptChecks.
             {
                 int wv{0};
                 std::vector<unsigned char> wp;
                 if (prev.scriptPubKey.IsWitnessProgram(wv, wp) && wv == 2 && wp.size() == 32) continue;
             }
-#endif
             // WITNESS_UNKNOWN failures are typically also caught with a policy
             // flag in the script interpreter, but it can be helpful to catch
             // this type of NONSTANDARD transaction earlier in transaction

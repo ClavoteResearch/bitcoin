@@ -1133,7 +1133,12 @@ bool MemPoolAccept::PolicyScriptChecks(Workspace& ws)
     const CTransaction& tx = *ws.m_ptx;
     TxValidationState& state = ws.m_state;
 
-    constexpr script_verify_flags scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    script_verify_flags scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    // Qcoin / Option B: until DEPLOYMENT_MLDSA_V2 is active, treat witness v2 as an
+    // unknown upgradable version so pre-activation spends are discouraged, not relayed.
+    if (!DeploymentActiveAfter(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_MLDSA_V2)) {
+        scriptVerifyFlags = scriptVerifyFlags & ~script_verify_flags{SCRIPT_VERIFY_MLDSA_V2};
+    }
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
@@ -2282,6 +2287,11 @@ script_verify_flags GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_NULLDUMMY;
+    }
+
+    // Qcoin / Option B: enforce witness v2 ML-DSA attestation rules
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_MLDSA_V2)) {
+        flags |= SCRIPT_VERIFY_MLDSA_V2;
     }
 
     return flags;

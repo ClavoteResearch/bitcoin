@@ -71,7 +71,7 @@ find_path(OQS_INCLUDE_DIR NAMES oqs/oqs.h REQUIRED)
 find_library(OQS_LIBRARY NAMES oqs REQUIRED)
 message(STATUS "Qcoin: liboqs include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
 option(QCOIN_ECDSA_FALLBACK "Fall back to secp256k1 ECDSA verification for non-ML-DSA-sized signatures" ON)
-option(QCOIN_WITNESS_V2_EXPERIMENTAL "Enable the experimental segwit v2 ML-DSA attestation path in consensus (Option B)" OFF)
+option(QCOIN_WITNESS_V2_EXPERIMENTAL "Build experimental extras for the segwit v2 ML-DSA path: non-BIP ML-DSA-87 param_id 0x7f and qcoin-v2-selftest (activation itself is DEPLOYMENT_MLDSA_V2)" OFF)
 message(STATUS "Qcoin: QCOIN_WITNESS_V2_EXPERIMENTAL=${QCOIN_WITNESS_V2_EXPERIMENTAL}")
 message(STATUS "Qcoin: QCOIN_ECDSA_FALLBACK=${QCOIN_ECDSA_FALLBACK}")
 
