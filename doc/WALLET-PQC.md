@@ -7,29 +7,44 @@ in the clavote-boop/BIP repository (`docs/spec/bip-mldsa-formal.md`).
 
 ## Current status
 
+Last refreshed at commit ffe9d44 (30 Oct 2026). Everything below is exercised by
+the shell tests in `fork/test/` on the default build unless marked otherwise.
+
 | Piece | Location | State |
 |---|---|---|
-| Consensus verify stub | `fork/src/script/verify_stub.h` | ML-DSA-87 only, via liboqs. All legacy ECDSA checks in `script/interpreter.cpp` are routed here. |
-| ECDSA fallback | CMake option `QCOIN_ECDSA_FALLBACK` (default ON) | When ON, inputs that are not ML-DSA-87 sized fall back to secp256k1 verification, so regtest spends with ordinary wallets work. Turn OFF to test strict routing. |
-| Wallet scheme switch | `fork/src/pqc/pqc.h`, `-walletsigscheme=<ecdsa\|mldsa44\|mldsa87>` | Runtime, read once in `WalletInit::ParameterInteraction`. Compile-time default via `-DQCOIN_DEFAULT_SIG_SCHEME=<0\|1\|2>`. Default `ecdsa`. |
-| ML-DSA keygen / sign / verify | `fork/src/pqc/pqc.cpp` | Thin liboqs wrappers for ML-DSA-44 and ML-DSA-87. Functional. |
-| ML-DSA key storage | `walletdescriptormldsakey` records (`wallet/walletdb.cpp`), `DescriptorScriptPubKeyMan::m_map_mldsa_keys` | One record per key, keyed by (descriptor id, SHA256(pk)), value (scheme, pk, sk, hash). Loaded with the descriptor and exposed to signing through `SigningProvider::GetMlDsaKey`. Encrypted wallets store `walletdescriptormldsackey` records instead: the secret is AES-256-CBC under the wallet master key with IV = SHA256(pk), exactly like secp256k1 descriptor keys; `encryptwallet` converts existing plaintext records and erases them. Unlocking verifies every ML-DSA record decrypts to the parameter set's secret-key length. The former process-wide `mldsa_keys.dat` store is gone. |
-| Keygen call site | `wallet/wallet.cpp`, `CWallet::SetupOwnDescriptorScriptPubKeyMans` | With a non-ECDSA scheme, a keypair is generated, added to the store as default, and saved to disk. |
-| Witness v2 definitions (Option B) | `fork/src/script/witness_v2.h` | Constants, attestation parser/builder, commitment computation, section 6 message builder and ML-DSA verify with context, per BIP sections 1-3 and 6. Wired into the interpreter only under `QCOIN_WITNESS_V2_EXPERIMENTAL`; `Qcoin / Option B` marker comments in solver, key_io, descriptor, outputtype and addresstype show where the rest attaches. |
-| Signing call site | `script/sign.cpp`, `MutableTransactionSignatureCreator::CreateMlDsaAttestation` | Witness v2 programs are routed here by `ProduceSignature` (experimental builds). ECDSA inputs are ECDSA-signed again. |
-| wpq() descriptor + wallet import | `script/descriptor.cpp`, `wallet/wallet.cpp` | `wpq(HEXPK)` emits `OP_2 <Q>`; imported under label `mldsa` at wallet creation with a non-ECDSA scheme. Address is `bcrt1z...` via `WitnessUnknown`. |
+| Witness v2 output (Option B) | `fork/src/script/witness_v2.h`, `script/interpreter.cpp` (`VerifyWitnessProgram`) | **Working.** `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| SHA256(pk))`. The spend's last witness element is the attestation `0x51 \|\| n \|\| param_id \|\| pk \|\| sig`; the interpreter checks the commitment and verifies the ML-DSA signature over `param_id \|\| pk_hash \|\| sighash` (BIP341 sighash, SIGHASH_DEFAULT) with context `BIP-MLDSAv2`. Param id `0x01` = ML-DSA-44 (3735-byte attestation). Errors `SCRIPT_ERR_MLDSA_ATTESTATION` / `SCRIPT_ERR_MLDSA_SIG`. |
+| Activation | `Consensus::DEPLOYMENT_MLDSA_V2` ("mldsav2"), `SCRIPT_VERIFY_MLDSA_V2`, `validation.cpp` | **Working.** Buried deployment: height 0 on regtest (override `-testactivationheight=mldsav2@N`) and `qtctest`; never on mainnet/testnet/signet. Before activation v2 inputs are anyone-can-spend for blocks and rejected by the mempool (`mempool-script-verify-flag-failed`); after it the flag is enforced in blocks and policy, and `AreInputsStandard` accepts v2. Shown by `getdeploymentinfo`. Test: `regtest_v2_activation.sh`. |
+| Legacy ECDSA-path routing | `fork/src/script/verify_stub.h`, CMake `QCOIN_ECDSA_FALLBACK` (default ON) | **Leftover, must be reverted.** From the first experiment: legacy ECDSA checks in the interpreter go through this stub, which falls back to secp256k1 when the input is not ML-DSA-87 sized. With the fallback on (every build so far) behaviour equals upstream. It is unrelated to witness v2 and is the first item under "Testnet readiness". |
+| ML-DSA primitives | `fork/src/pqc/pqc.{h,cpp}` (library `qcoin_pqc`) | **Working.** liboqs 0.14 wrappers: keygen (random and from a 32-byte seed via a temporary custom RNG under a mutex), sign/verify with context, HD master/child seed derivation, `SecureBytes` on Core's `secure_allocator`, `WipeSecret`. ML-DSA-44 and ML-DSA-87. |
+| Wallet scheme switch | `-walletsigscheme=<ecdsa\|mldsa44\|mldsa87>` (`wallet/init.cpp`) | **Working.** Default `ecdsa` leaves the wallet upstream-identical. `mldsa44` makes wallet creation also generate an ML-DSA key and import a `wpq()` descriptor. `mldsa87` only in experimental builds (param id `0x7f`, non-BIP). |
+| Addresses and descriptors | `script/descriptor.cpp` (`WpqDescriptor`), `wallet/rpc/addresses.cpp` | **Working.** `wpq(HEXPK)` emits `OP_2 <Q>`; `InferDescriptor` maps `OP_2 <Q>` back to `wpq()` (needed for fee estimation). RPCs `getnewmldsaaddress [label]`, `derivemldsaaddress <index>`, `getmldsahdinfo`. Addresses are bech32m witness version 2: `bcrt1z...` (regtest), `tq1z...` (qtctest), `bc1z...` (mainnet, never active). Destination type is still `WitnessUnknown{2,Q}` (no dedicated `OutputType`). |
+| Spending | `script/sign.cpp` (`ProduceSignature` v2 branch, `CreateMlDsaAttestation`), `script/signingprovider.*` | **Working.** `sendtoaddress`/`send`/`fundrawtransaction`+`signrawtransactionwithwallet` from a v2 coin build the attestation, pass `VerifyScript`, are accepted by the mempool and confirm. Mixed ECDSA + v2 inputs sign correctly. Tests: `regtest_v2_spend.sh`, `regtest_v2_multi.sh`, `regtest_qtctest.sh`. |
+| Key storage | `wallet/walletdb.cpp`, `DescriptorScriptPubKeyMan::m_map_mldsa_keys` | **Working.** One `walletdescriptormldsakey` record per key, wallet-scoped, included in `backupwallet`. Details below. |
+| Encryption | `walletdescriptormldsackey` records, `wallet/scriptpubkeyman.cpp` | **Working.** AES-256-CBC under the wallet master key, IV = SHA256(pk), like secp256k1 descriptor keys; `encryptwallet` converts and erases plaintext records; locked wallets cannot sign v2 inputs. Test: `regtest_v2_encrypt.sh`. |
+| HD derivation | `walletdescriptormldsahd` record, `CWallet::DeriveMlDsaDestination` | **Working.** `master = HMAC-SHA512("Qcoin/MLDSAv2/master", root key)[0:32]`, `seed_i = HMAC-SHA512(master, "MLDSAv2/child" \|\| i)[0:32]`, deterministic keygen from the seed. Same wallet seed reproduces the same `tq1z`/`bcrt1z` addresses. Test: `regtest_v2_hd.sh`. |
+| PSBT | `psbt.cpp` | **Working.** Proprietary input field (identifier `qcoin`, subtype 0) carries `param_id \|\| pk`; the attestation goes in `final_scriptwitness`. `walletprocesspsbt` signs v2 inputs; non-key-holding wallets pass the PSBT through unchanged. Test: `regtest_v2_psbt.sh`. |
+| `qtctest` chain | `src/kernel/chainparams.cpp` (`CQtcTestParams`), `chainparamsbase.cpp` | **Live (single operator).** `-chain=qtctest`, P2P 28333, RPC 28332, HRP `tq`, genesis `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` at nBits 1e00ffff (about 3 s per block on one CPU, one block per `generatetoaddress` call with `maxtries` 2000000000), mldsav2 active from genesis. No seeds, checkpoints or assumevalid yet; peers use `addnode=`. Example config `fork/contrib/qtctest.conf`. Tests: `regtest_qtctest.sh`, `regtest_qtctest_twonode.sh`. |
+| Explorer | `fork/tools/qtc-explorer.py` | **Working.** Stdlib-only HTTP status page: chain summary, deployment state, recent blocks, block/tx/address pages, mempool. Test: `regtest_qtctest_explorer.sh`. |
+| Faucet | `fork/tools/qtc-faucet.py` | **Working.** `fund` (mines to the faucet wallet), `send`, `serve` (HTTP form, pays `tq1z...` addresses only by default, per-address cooldown and per-IP limit via `X-Forwarded-For`, state in `faucet-state.json`). Test: `regtest_qtctest_faucet.sh`. |
+| Genesis helper | `fork/tools/mine-genesis.py` | **Working.** Deterministic multi-process genesis miner; prints the C++ lines to paste. Test: `test_mine_genesis.sh`. |
+| Launch docs | this file: "Public launch", "Testnet launch", "Raising the proof-of-work difficulty" | Runbook for seed node, second node, explorer, faucet and seed publishing. Hostnames are placeholders until a public host exists. |
+| Experimental build | `-DQCOIN_WITNESS_V2_EXPERIMENTAL=ON` | Adds ML-DSA-87 (param id `0x7f`) and the `qcoin-v2-selftest` binary. Nothing in the default build depends on it. |
 
-The ECDSA path is untouched when `-walletsigscheme=ecdsa` (the default), so all
-existing wallet and functional test flows keep working.
+With `-walletsigscheme=ecdsa` (the default) the wallet, address types and
+signing are unchanged from upstream, so existing wallet and functional test
+flows keep working. Consensus differs from upstream only where `mldsav2` is
+active (regtest and `qtctest`) and in the leftover ECDSA-path routing noted
+above.
 
-### Why an ML-DSA "spend" still fails
+### What a v2 spend looks like
 
-`ProduceSignature` finishes by running `VerifyScript` with the freshly built
-witness. The interpreter hands `(sighash, sig, pubkey)` to the verify stub;
-`pubkey` is the 33-byte secp256k1 key from the P2WPKH output, so the input is
-not ML-DSA-87 sized and, with the fallback on, secp256k1 verification of a
-4627-byte ML-DSA signature fails. Without the fallback it fails the same way.
-Nothing short of outputs that commit to an ML-DSA public key can make this pass.
+Receiving: `getnewmldsaaddress` returns `tq1z...`; the output script is
+`OP_2 <32-byte Q>`. Spending: the wallet finds the ML-DSA key by `SHA256(pk)`,
+signs `param_id || pk_hash || sighash` and places the 3735-byte attestation as
+the single witness element. With the witness discount a v2 input weighs about
+1 kvB (3.7 kB of witness data plus the 41-byte input); fees are estimated from
+`wpq()`'s `MaxSatisfactionWeight`. What does not work yet is
+listed under "Testnet readiness" and "Remaining gaps".
 
 ### Key storage: what is and is not covered
 
