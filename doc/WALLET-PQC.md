@@ -1,9 +1,14 @@
 # Wallet post-quantum (ML-DSA) integration: status and gaps
 
 This document tracks the Qcoin (QTC placeholder) fork's path from secp256k1
-ECDSA wallet signing to FIPS 204 ML-DSA. It is a working note, not a spec; the
-normative design is the "Segwit v2: ML-DSA Post-Quantum Signatures" BIP draft
-in the clavote-boop/BIP repository (`docs/spec/bip-mldsa-formal.md`).
+ECDSA wallet signing to FIPS 204 ML-DSA. It is a working note, not a spec. The
+normative design of the witness v2 output and its attestation is the "Segwit
+v2: ML-DSA Post-Quantum Signatures" BIP draft in the clavote-boop/BIP
+repository (`docs/spec/bip-mldsa-formal.md`). The BIP draft describes those
+rules as a soft fork of Bitcoin; Qcoin adopts the output format but is a
+separate coin with an additional rule, the value rule below, and the Qcoin
+white paper (kept outside this repository, see "White paper") is the document
+that states Qcoin's own rules.
 
 ## Current status
 
@@ -110,6 +115,35 @@ Gaps: change keys are created even when no change is needed and are not reused
 only fails at the mempool; a dedicated standardness reason is not emitted
 because the consensus check fires first. Test: `fork/test/regtest_pq_only.sh`;
 `regtest_v2_activation.sh` shows the rule switching on with the deployment.
+
+### White paper
+
+The Qcoin white paper is not part of this repository (no `docs/Qcoin-Whitepaper.md`
+or similar exists here; as of commit d8afb83 it lives with the BIP draft in the
+clavote-boop/BIP repository). It must be updated to match the code, and the
+statements it needs are these:
+
+- Qcoin is a separate post-quantum coin, not a soft fork of Bitcoin. Its chains
+  (`qtctest` now, a Qcoin mainnet later) share Bitcoin Core's code base but not
+  Bitcoin's ledger, consensus rules or coins.
+- **Witness version 2 ML-DSA outputs (`OP_2 <32-byte commitment>`, addresses
+  `tq1z…`/`bc1z…`) are the only monetary output type.** Every output with a
+  non-zero value, mining rewards included, must be one. Keys are ML-DSA-44
+  (FIPS 204); signatures are carried in the attestation defined by the BIP
+  draft and must be canonically encoded.
+- Ordinary ECDSA outputs (pay-to-pubkey-hash, pay-to-script-hash, P2WPKH,
+  P2WSH, Taproot, bare multisig, pay-to-anchor) cannot carry value. A block or
+  transaction containing one with a non-zero value is invalid
+  (`bad-txns-output-not-mldsa`), and the reference wallet refuses to create
+  one. Zero-value outputs (OP_RETURN data, the witness commitment) are
+  permitted.
+- The rule is enforced from the first block after genesis on every Qcoin
+  chain (`Consensus::Params::fMlDsaOnlyValue`, see above), so there has never
+  been an ECDSA coin on a Qcoin chain and no migration period exists.
+
+Any sentence in the white paper that calls Qcoin a soft fork, promises
+compatibility with Bitcoin addresses or wallets, or describes ECDSA outputs as
+spendable for value is out of date and should be replaced by the above.
 
 ## Activation: DEPLOYMENT_MLDSA_V2
 
