@@ -6,6 +6,54 @@ https://bitcoincore.org
 For an immediately usable, binary version of the Bitcoin Core software, see
 https://bitcoincore.org/en/download/.
 
+Qcoin: ML-DSA post-quantum fork (experimental)
+----------------------------------------------
+
+This tree is the `experimental-pqc` branch of **Qcoin**, a Bitcoin Core fork
+that adds post-quantum signatures with ML-DSA (FIPS 204, via
+[liboqs](https://github.com/open-quantum-safe/liboqs) 0.14). It is research
+code: no mainnet, no stability promises, test coins have no value.
+
+**Start here:** [doc/WALLET-PQC.md](doc/WALLET-PQC.md) is the living status
+document. It has the build notes, the design decision, the activation rules,
+the `qtctest` launch runbook, and the list of remaining gaps.
+
+Current state (October 2026):
+
+- **Witness v2 (ML-DSA) outputs.** Address programs `OP_2 <Q>` commit to an
+  ML-DSA-44 public key; the spend carries a `param_id || pk || sig`
+  attestation in the witness, verified over the BIP341 sighash with the
+  `BIP-MLDSAv2` signing context. Gated by the buried deployment `mldsav2`
+  (`getdeploymentinfo`), active from genesis on regtest and `qtctest`, never on
+  mainnet/testnet/signet. The wallet supports it end to end: `wpq()`
+  descriptors, `getnewmldsaaddress`, HD-derived keys stored encrypted in the
+  wallet database, PSBT, and `-walletsigscheme=mldsa44`. Addresses are
+  bech32m version 2 (`bcrt1z…`, `tq1z…`).
+- **`qtctest` chain.** A dedicated test network (`-chain=qtctest`, P2P 28333,
+  RPC 28332, genesis
+  `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437`,
+  difficulty 1e00ffff, about 3 s per block on one CPU). Example configuration in
+  [fork/contrib/qtctest.conf](fork/contrib/qtctest.conf); seed nodes are not
+  published yet, so peers use `addnode=`.
+- **Explorer and faucet.** Dependency-free Python tools in
+  [fork/tools](fork/tools): `qtc-explorer.py` (status page, blocks,
+  transactions, address lookup) and `qtc-faucet.py` (pays ML-DSA addresses,
+  rate-limited). Both talk to a local node over RPC.
+- **Tests.** Shell regression tests in [fork/test](fork/test):
+  `regtest_v2_*.sh` (spend, multi-wallet, encryption, HD, PSBT, activation),
+  `regtest_qtctest.sh` (single node, v2 spend confirmed on `qtctest`),
+  `regtest_qtctest_twonode.sh` (two nodes over loopback), explorer and faucet
+  tests. `qcoin-v2-selftest` is built with `-DQCOIN_WITNESS_V2_EXPERIMENTAL=ON`.
+
+Build as upstream (`doc/build-*.md`) with liboqs installed and
+`-DENABLE_IPC=OFF`; the ML-DSA code lives under [fork/src](fork/src) and in
+marked `Qcoin` sections of `src/script`, `src/wallet`, `src/kernel/chainparams.cpp`
+and `src/validation.cpp`. Known open items (legacy ECDSA-path routing to revert,
+canonical signature encoding check, seed nodes) are tracked in
+[doc/WALLET-PQC.md](doc/WALLET-PQC.md) under "Testnet readiness".
+
+The remainder of this file is the unchanged upstream Bitcoin Core README.
+
 What is Bitcoin Core?
 ---------------------
 
