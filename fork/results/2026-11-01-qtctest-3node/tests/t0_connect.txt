@@ -1,0 +1,29 @@
+== t0: heights before connecting ==
+A height=105
+B height=0
+C height=0
+target height (node A) = 105
+clock A: ahead of NTP by 0.002132 s
+clock B: ahead of NTP by 0.000393 s
+clock C: ahead of NTP by -0.001637 s
+connecting (local epoch 1793571963.602547400)
+A_addnode_sent 1793571966.543129906
+B_addnode_sent 1793571967.911296661
+C_addnode_sent 1793571969.384265126
+B sync result: height height=105 1793571967.772841593
+C sync result: height height=105 1793571968.526427893
+== peers ==
+--- A
+  peer NODE_B_IP:41044 inbound=False subver=/Satoshi:32.99.0/ synced_blocks=-1 minping=0.044017247
+  peer NODE_C_IP:10628 inbound=False subver=/Satoshi:32.99.0/ synced_blocks=-1 minping=0.061614778
+  height=105 tip=0000003cf8c1b12fa770f8c42c452669f2ad162965220302fb387b6af6f66c54
+--- B
+  peer NODE_A_IP:41114 inbound=True subver=/Satoshi:32.99.0/ synced_blocks=105 minping=0.043472887
+  peer NODE_C_IP:10628 inbound=False subver=/Satoshi:32.99.0/ synced_blocks=105 minping=0.028744822
+  peer NODE_C_IP:39790 inbound=True subver=/Satoshi:32.99.0/ synced_blocks=105 minping=0.028500321
+  height=105 tip=0000003cf8c1b12fa770f8c42c452669f2ad162965220302fb387b6af6f66c54
+--- C
+  peer NODE_A_IP:51992 inbound=True subver=/Satoshi:32.99.0/ synced_blocks=105 minping=0.061849347
+  peer NODE_B_IP:42814 inbound=True subver=/Satoshi:32.99.0/ synced_blocks=105 minping=0.029676894
+  peer NODE_B_IP:41044 inbound=False subver=/Satoshi:32.99.0/ synced_blocks=105 minping=0.02818714
+  height=105 tip=0000003cf8c1b12fa770f8c42c452669f2ad162965220302fb387b6af6f66c54

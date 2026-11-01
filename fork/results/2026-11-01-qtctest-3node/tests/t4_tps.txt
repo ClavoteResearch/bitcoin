@@ -1,0 +1,23 @@
+== t4: throughput sample, N=50 ==
+clock A: ahead of NTP by 0.001422 s
+clock B: ahead of NTP by 0.001319 s
+clock C: ahead of NTP by -0.001963 s
+split txid=3cfc79de86655b1c088c0fd67ee5e004c78a8b85dd396a3164012a049fd9a333
+split confirmed in block: mine_start=1793572574.736381720 mine_end=1793572579.205031672 hash=000000364a45d2aa809a7bc45303f92944f2723e7b58fb2f5d938cd8245be3ee height=115
+prepared=50 prep_seconds=0.36
+heights before: A=115 B=115 C=115   mempools: A=0
+first_start=1793572603.739588 last_end=1793572604.923010 n=50 ok=50 fail=0 workers=8
+call_seconds median=0.187 max=0.195 total_window=1.183
+mempools after relay: B=50 C=50
+block with the batch mined on A: mine_start=1793572616.231128071 mine_end=1793572619.713838436 hash=000000835bd054c2b08d953d63b283c7e6f75fa1f42b8ec2d533bb568f7b9549 height=116
+timings (NTP-corrected, seconds, relative to the first broadcast call):
+  A: all 50 broadcast calls finished after 1.183 s  => mempool admission rate 42.3 tx/s (8 parallel RPC callers, includes ML-DSA verification)
+  B mempool reached 1 / 25 / 50 txs at +3.448 / +3.562 / +3.611 s
+  C mempool reached 1 / 25 / 50 txs at +3.346 / +3.563 / +3.675 s
+  mining the block on A took 3.483 s, started at +12.492 s
+  A reached height 116 at +15.985 s, mempool after = 0
+  B reached height 116 at +16.005 s, mempool after = 0
+  C reached height 116 at +16.030 s, mempool after = 0
+  block 116: 51 txs, size=192010 bytes, weight=206782 (as seen by B)
+  END-TO-END: 50 txs, first broadcast -> confirmed on all nodes in 16.005 s => 3.1 tx/s (limited by the manual 'mine right after relay' step, not by block capacity)
+  block capacity check: weight=206782 of 4000000 WU; one 1-input/1-output v2 spend is about 4.2 kWU, so roughly 900 per block at full weight

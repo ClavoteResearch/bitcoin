@@ -1,0 +1,310 @@
+
+
+
+
+
+2026-11-01T20:51:35Z Bitcoin Core version v32.99.0-3a8c9c5adbf0 (release build)
+2026-11-01T20:51:35Z parameter interaction: -listen=0 -> setting -natpmp=0
+2026-11-01T20:51:35Z parameter interaction: -listen=0 -> setting -discover=0
+2026-11-01T20:51:35Z parameter interaction: -listen=0 -> setting -listenonion=0
+2026-11-01T20:51:35Z parameter interaction: -listen=0 -> setting -i2pacceptincoming=0
+2026-11-01T20:51:35Z Log output may contain privacy-sensitive information. Be cautious when sharing logs.
+2026-11-01T20:51:35Z Qcoin: wallet signature scheme = mldsa44
+2026-11-01T20:51:35Z Using the 'x86_shani(1way;2way)' SHA256 implementation
+2026-11-01T20:51:35Z Using RdSeed as an additional entropy source
+2026-11-01T20:51:35Z Using RdRand as an additional entropy source
+2026-11-01T20:51:35Z Default data directory /root/.bitcoin
+2026-11-01T20:51:35Z Using data directory /root/qtctest-data/qtctest
+2026-11-01T20:51:35Z Config file: /root/qtctest-data/bitcoin.conf (not found, skipping)
+2026-11-01T20:51:35Z Command-line arg: chain="qtctest"
+2026-11-01T20:51:35Z Command-line arg: daemon=""
+2026-11-01T20:51:35Z Command-line arg: datadir="/root/qtctest-data"
+2026-11-01T20:51:35Z Command-line arg: dnsseed="0"
+2026-11-01T20:51:35Z Command-line arg: fallbackfee="0.0001"
+2026-11-01T20:51:35Z Command-line arg: listen="0"
+2026-11-01T20:51:35Z Command-line arg: txindex="1"
+2026-11-01T20:51:35Z Using at most 200 automatic connections (1024 file descriptors available)
+2026-11-01T20:51:35Z scheduler thread start
+2026-11-01T20:51:35Z Binding RPC on address ::1 port 28332
+2026-11-01T20:51:35Z Binding RPC on address 127.0.0.1 port 28332
+2026-11-01T20:51:35Z Generated RPC authentication cookie /root/qtctest-data/qtctest/.cookie
+2026-11-01T20:51:35Z Permissions used for cookie: rw-------
+2026-11-01T20:51:35Z Using random cookie authentication.
+2026-11-01T20:51:35Z Starting HTTP server with 16 worker threads
+2026-11-01T20:51:35Z http.00 thread start
+2026-11-01T20:51:35Z http.01 thread start
+2026-11-01T20:51:35Z http.02 thread start
+2026-11-01T20:51:35Z http.03 thread start
+2026-11-01T20:51:35Z http.04 thread start
+2026-11-01T20:51:35Z http.05 thread start
+2026-11-01T20:51:35Z http.06 thread start
+2026-11-01T20:51:35Z http.07 thread start
+2026-11-01T20:51:35Z http.08 thread start
+2026-11-01T20:51:35Z http.09 thread start
+2026-11-01T20:51:35Z http.10 thread start
+2026-11-01T20:51:35Z http.11 thread start
+2026-11-01T20:51:35Z http.12 thread start
+2026-11-01T20:51:35Z http.13 thread start
+2026-11-01T20:51:35Z http.14 thread start
+2026-11-01T20:51:35Z http.15 thread start
+2026-11-01T20:51:35Z Using wallet directory /root/qtctest-data/qtctest/wallets
+2026-11-01T20:51:35Z http thread start
+2026-11-01T20:51:35Z Using SQLite Version 3.37.2
+2026-11-01T20:51:35Z init message: Verifying wallet(s)…
+2026-11-01T20:51:35Z Using /16 prefix for IP bucketing
+2026-11-01T20:51:35Z init message: Loading P2P addresses…
+2026-11-01T20:51:35Z Creating peers.dat because the file was not found ("/root/qtctest-data/qtctest/peers.dat")
+2026-11-01T20:51:35Z init message: Loading banlist…
+2026-11-01T20:51:35Z Recreating the banlist database
+2026-11-01T20:51:35Z SetNetworkActive: true
+2026-11-01T20:51:35Z Cache configuration:
+2026-11-01T20:51:35Z * Using 2.0 MiB for block index database
+2026-11-01T20:51:35Z * Using 102.4 MiB for transaction index database
+2026-11-01T20:51:35Z * Using 8.0 MiB for chain state database
+2026-11-01T20:51:35Z * Using 911.6 MiB for in-memory UTXO set (plus up to 286.1 MiB of unused mempool space)
+2026-11-01T20:51:35Z Script verification uses 15 additional threads
+2026-11-01T20:51:35Z Using obfuscation key for blocksdir *.dat files (/root/qtctest-data/qtctest/blocks): '5f1f37ca8b7f8523'
+2026-11-01T20:51:35Z Opening LevelDB in /root/qtctest-data/qtctest/blocks/index
+2026-11-01T20:51:35Z Opened LevelDB successfully
+2026-11-01T20:51:35Z Using obfuscation key for /root/qtctest-data/qtctest/blocks/index: 0000000000000000
+2026-11-01T20:51:35Z Using 16 MiB out of 16 MiB requested for signature cache, able to store 524288 elements
+2026-11-01T20:51:35Z Using 16 MiB out of 16 MiB requested for script execution cache, able to store 524288 elements
+2026-11-01T20:51:35Z init message: Loading block index…
+2026-11-01T20:51:35Z Validating signatures for all blocks.
+2026-11-01T20:51:35Z Setting nMinimumChainWork=0000000000000000000000000000000000000000000000000000000000000000
+2026-11-01T20:51:35Z Loading block index db: last block file = 0
+2026-11-01T20:51:35Z Loading block index db: last block file info: CBlockFileInfo(blocks=0, size=0, heights=0...0, time=1970-01-01...1970-01-01)
+2026-11-01T20:51:35Z Checking all blk files are present...
+2026-11-01T20:51:35Z Initializing chainstate Chainstate [ibd] @ height -1 (null)
+2026-11-01T20:51:35Z Opening LevelDB in /root/qtctest-data/qtctest/chainstate
+2026-11-01T20:51:35Z Opened LevelDB successfully
+2026-11-01T20:51:35Z Wrote new obfuscation key for /root/qtctest-data/qtctest/chainstate: 7faa67dca8c8972c
+2026-11-01T20:51:35Z Using obfuscation key for /root/qtctest-data/qtctest/chainstate: 7faa67dca8c8972c
+2026-11-01T20:51:35Z prevout.00 thread start
+2026-11-01T20:51:35Z prevout.01 thread start
+2026-11-01T20:51:35Z prevout.02 thread start
+2026-11-01T20:51:35Z prevout.03 thread start
+2026-11-01T20:51:35Z prevout.04 thread start
+2026-11-01T20:51:35Z prevout.05 thread start
+2026-11-01T20:51:35Z prevout.06 thread start
+2026-11-01T20:51:35Z Block input prevout fetching uses 8 additional threads
+2026-11-01T20:51:35Z prevout.07 thread start
+2026-11-01T20:51:35Z init message: Verifying blocks…
+2026-11-01T20:51:35Z Block index and chainstate loaded
+2026-11-01T20:51:35Z /root/qtctest-data/qtctest/fees/block_policy_estimates.dat is not found. Continue anyway.
+2026-11-01T20:51:35Z Opening LevelDB in /root/qtctest-data/qtctest/indexes/txindex
+2026-11-01T20:51:35Z Opened LevelDB successfully
+2026-11-01T20:51:35Z Using obfuscation key for /root/qtctest-data/qtctest/indexes/txindex: 0000000000000000
+2026-11-01T20:51:35Z Setting NODE_NETWORK in non-prune mode
+2026-11-01T20:51:35Z initload thread start
+2026-11-01T20:51:35Z UpdateTip: new best=0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437 height=0 version=0x00000001 log2_work=24.000022 tx=1 date='2025-10-30T00:00:00Z' progress=0.000031 cache=0.3MiB(0txo)
+2026-11-01T20:51:35Z block tree size = 1
+2026-11-01T20:51:35Z nBestHeight = 0
+2026-11-01T20:51:35Z 0 block-relay-only anchors will be tried for connections.
+2026-11-01T20:51:35Z init message: Starting network threads…
+2026-11-01T20:51:35Z Failed to open mempool file. Continuing anyway.
+2026-11-01T20:51:35Z initload thread exit
+2026-11-01T20:51:35Z txidx thread start
+2026-11-01T20:51:35Z txindex is enabled at height 0
+2026-11-01T20:51:35Z txidx thread exit
+2026-11-01T20:51:35Z DNS seeding disabled
+2026-11-01T20:51:35Z net thread start
+2026-11-01T20:51:35Z addcon thread start
+2026-11-01T20:51:35Z opencon thread start
+2026-11-01T20:51:35Z init message: Done loading
+2026-11-01T20:51:35Z msghand thread start
+2026-11-01T20:51:36Z Adding fixed seeds as -dnsseed=0 (or IPv4/IPv6 connections are disabled via -onlynet) and neither -addnode nor -seednode are provided
+2026-11-01T20:51:36Z Added 0 fixed seeds from reachable networks.
+2026-11-01T21:16:58Z http.03 thread exit
+2026-11-01T21:16:58Z http.07 thread exit
+2026-11-01T21:16:58Z http.09 thread exit
+2026-11-01T21:16:58Z http.00 thread exit
+2026-11-01T21:16:58Z net thread exit
+2026-11-01T21:16:58Z http.08 thread exit
+2026-11-01T21:16:58Z http.10 thread exit
+2026-11-01T21:16:58Z http.04 thread exit
+2026-11-01T21:16:58Z http.15 thread exit
+2026-11-01T21:16:58Z http.14 thread exit
+2026-11-01T21:16:58Z http.12 thread exit
+2026-11-01T21:16:58Z opencon thread exit
+2026-11-01T21:16:58Z http.11 thread exit
+2026-11-01T21:16:58Z http.06 thread exit
+2026-11-01T21:16:58Z http.13 thread exit
+2026-11-01T21:16:58Z http.02 thread exit
+2026-11-01T21:16:58Z addcon thread exit
+2026-11-01T21:16:58Z http.01 thread exit
+2026-11-01T21:16:58Z http.05 thread exit
+2026-11-01T21:16:58Z Shutdown in progress...
+2026-11-01T21:16:58Z http thread exit
+2026-11-01T21:16:58Z msghand thread exit
+2026-11-01T21:16:58Z DumpAnchors: Flush 0 outbound block-relay-only peer addresses to anchors.dat started
+2026-11-01T21:16:58Z DumpAnchors: Flush 0 outbound block-relay-only peer addresses to anchors.dat completed (0.00s)
+2026-11-01T21:16:58Z scheduler thread exit
+2026-11-01T21:16:58Z Writing 0 mempool transactions to file...
+2026-11-01T21:16:58Z Writing 0 unbroadcast transactions to file.
+2026-11-01T21:16:58Z Dumped mempool: 0.000s to copy, 0.003s to dump, 27 bytes dumped to file
+2026-11-01T21:16:58Z prevout.03 thread exit
+2026-11-01T21:16:58Z prevout.00 thread exit
+2026-11-01T21:16:58Z prevout.02 thread exit
+2026-11-01T21:16:58Z prevout.04 thread exit
+2026-11-01T21:16:58Z prevout.05 thread exit
+2026-11-01T21:16:58Z prevout.01 thread exit
+2026-11-01T21:16:58Z prevout.06 thread exit
+2026-11-01T21:16:58Z prevout.07 thread exit
+2026-11-01T21:16:58Z Shutdown done
+
+
+
+
+
+2026-11-01T21:19:36Z Bitcoin Core version v32.99.0-27ff8a7d5469 (release build)
+2026-11-01T21:19:36Z parameter interaction: -listen=0 -> setting -natpmp=0
+2026-11-01T21:19:36Z parameter interaction: -listen=0 -> setting -discover=0
+2026-11-01T21:19:36Z parameter interaction: -listen=0 -> setting -listenonion=0
+2026-11-01T21:19:36Z parameter interaction: -listen=0 -> setting -i2pacceptincoming=0
+2026-11-01T21:19:36Z Log output may contain privacy-sensitive information. Be cautious when sharing logs.
+2026-11-01T21:19:36Z Qcoin: wallet signature scheme = mldsa44
+2026-11-01T21:19:36Z Using the 'x86_shani(1way;2way)' SHA256 implementation
+2026-11-01T21:19:36Z Using RdSeed as an additional entropy source
+2026-11-01T21:19:36Z Using RdRand as an additional entropy source
+2026-11-01T21:19:36Z Default data directory /root/.bitcoin
+2026-11-01T21:19:36Z Using data directory /root/qtctest-data/qtctest
+2026-11-01T21:19:36Z Config file: /root/qtctest-data/bitcoin.conf (not found, skipping)
+2026-11-01T21:19:36Z Command-line arg: chain="qtctest"
+2026-11-01T21:19:36Z Command-line arg: daemon=""
+2026-11-01T21:19:36Z Command-line arg: datadir="/root/qtctest-data"
+2026-11-01T21:19:36Z Command-line arg: dnsseed="0"
+2026-11-01T21:19:36Z Command-line arg: fallbackfee="0.0001"
+2026-11-01T21:19:36Z Command-line arg: listen="0"
+2026-11-01T21:19:36Z Command-line arg: txindex="1"
+2026-11-01T21:19:36Z Using at most 200 automatic connections (1024 file descriptors available)
+2026-11-01T21:19:36Z scheduler thread start
+2026-11-01T21:19:36Z Binding RPC on address ::1 port 28332
+2026-11-01T21:19:36Z Binding RPC on address 127.0.0.1 port 28332
+2026-11-01T21:19:36Z Generated RPC authentication cookie /root/qtctest-data/qtctest/.cookie
+2026-11-01T21:19:36Z Permissions used for cookie: rw-------
+2026-11-01T21:19:36Z Using random cookie authentication.
+2026-11-01T21:19:36Z Starting HTTP server with 16 worker threads
+2026-11-01T21:19:36Z http.00 thread start
+2026-11-01T21:19:36Z http.01 thread start
+2026-11-01T21:19:36Z http.02 thread start
+2026-11-01T21:19:36Z http.03 thread start
+2026-11-01T21:19:36Z http.04 thread start
+2026-11-01T21:19:36Z http.05 thread start
+2026-11-01T21:19:36Z http.06 thread start
+2026-11-01T21:19:36Z http.09 thread start
+2026-11-01T21:19:36Z http.07 thread start
+2026-11-01T21:19:36Z http.08 thread start
+2026-11-01T21:19:36Z http.10 thread start
+2026-11-01T21:19:36Z http.11 thread start
+2026-11-01T21:19:36Z http.12 thread start
+2026-11-01T21:19:36Z http.13 thread start
+2026-11-01T21:19:36Z http.14 thread start
+2026-11-01T21:19:36Z http.15 thread start
+2026-11-01T21:19:36Z Using wallet directory /root/qtctest-data/qtctest/wallets
+2026-11-01T21:19:36Z http thread start
+2026-11-01T21:19:36Z Using SQLite Version 3.37.2
+2026-11-01T21:19:36Z init message: Verifying wallet(s)…
+2026-11-01T21:19:36Z Using /16 prefix for IP bucketing
+2026-11-01T21:19:36Z init message: Loading P2P addresses…
+2026-11-01T21:19:36Z Loaded 0 addresses from peers.dat 0ms
+2026-11-01T21:19:36Z init message: Loading banlist…
+2026-11-01T21:19:36Z SetNetworkActive: true
+2026-11-01T21:19:36Z Cache configuration:
+2026-11-01T21:19:36Z * Using 2.0 MiB for block index database
+2026-11-01T21:19:36Z * Using 102.4 MiB for transaction index database
+2026-11-01T21:19:36Z * Using 8.0 MiB for chain state database
+2026-11-01T21:19:36Z * Using 911.6 MiB for in-memory UTXO set (plus up to 286.1 MiB of unused mempool space)
+2026-11-01T21:19:36Z Script verification uses 15 additional threads
+2026-11-01T21:19:36Z Using obfuscation key for blocksdir *.dat files (/root/qtctest-data/qtctest/blocks): '5f1f37ca8b7f8523'
+2026-11-01T21:19:36Z Opening LevelDB in /root/qtctest-data/qtctest/blocks/index
+2026-11-01T21:19:36Z Opened LevelDB successfully
+2026-11-01T21:19:36Z Using obfuscation key for /root/qtctest-data/qtctest/blocks/index: 0000000000000000
+2026-11-01T21:19:36Z Using 16 MiB out of 16 MiB requested for signature cache, able to store 524288 elements
+2026-11-01T21:19:36Z Using 16 MiB out of 16 MiB requested for script execution cache, able to store 524288 elements
+2026-11-01T21:19:36Z init message: Loading block index…
+2026-11-01T21:19:36Z Validating signatures for all blocks.
+2026-11-01T21:19:36Z Setting nMinimumChainWork=0000000000000000000000000000000000000000000000000000000000000000
+2026-11-01T21:19:36Z Loading block index db: last block file = 0
+2026-11-01T21:19:36Z Loading block index db: last block file info: CBlockFileInfo(blocks=1, size=287, heights=0...0, time=2025-10-30...2025-10-30)
+2026-11-01T21:19:36Z Checking all blk files are present...
+2026-11-01T21:19:36Z Initializing chainstate Chainstate [ibd] @ height -1 (null)
+2026-11-01T21:19:36Z Opening LevelDB in /root/qtctest-data/qtctest/chainstate
+2026-11-01T21:19:36Z Opened LevelDB successfully
+2026-11-01T21:19:36Z Using obfuscation key for /root/qtctest-data/qtctest/chainstate: 7faa67dca8c8972c
+2026-11-01T21:19:36Z prevout.00 thread start
+2026-11-01T21:19:36Z prevout.01 thread start
+2026-11-01T21:19:36Z prevout.02 thread start
+2026-11-01T21:19:36Z prevout.03 thread start
+2026-11-01T21:19:36Z prevout.04 thread start
+2026-11-01T21:19:36Z prevout.05 thread start
+2026-11-01T21:19:36Z Block input prevout fetching uses 8 additional threads
+2026-11-01T21:19:36Z prevout.06 thread start
+2026-11-01T21:19:36Z Loaded best chain: hashBestChain=0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437 height=0 date=2025-10-30T00:00:00Z progress=0.000031
+2026-11-01T21:19:36Z prevout.07 thread start
+2026-11-01T21:19:36Z init message: Verifying blocks…
+2026-11-01T21:19:36Z Block index and chainstate loaded
+2026-11-01T21:19:36Z Opening LevelDB in /root/qtctest-data/qtctest/indexes/txindex
+2026-11-01T21:19:36Z Opened LevelDB successfully
+2026-11-01T21:19:36Z Using obfuscation key for /root/qtctest-data/qtctest/indexes/txindex: 0000000000000000
+2026-11-01T21:19:36Z Setting NODE_NETWORK in non-prune mode
+2026-11-01T21:19:36Z block tree size = 1
+2026-11-01T21:19:36Z nBestHeight = 0
+2026-11-01T21:19:36Z Loaded 0 addresses from "anchors.dat"
+2026-11-01T21:19:36Z initload thread start
+2026-11-01T21:19:36Z 0 block-relay-only anchors will be tried for connections.
+2026-11-01T21:19:36Z init message: Starting network threads…
+2026-11-01T21:19:36Z DNS seeding disabled
+2026-11-01T21:19:36Z Loading 0 mempool transactions from file...
+2026-11-01T21:19:36Z Imported mempool transactions from file: 0 succeeded, 0 failed, 0 expired, 0 already there, 0 waiting for initial broadcast
+2026-11-01T21:19:36Z initload thread exit
+2026-11-01T21:19:36Z net thread start
+2026-11-01T21:19:36Z txidx thread start
+2026-11-01T21:19:36Z txindex is enabled at height 0
+2026-11-01T21:19:36Z addcon thread start
+2026-11-01T21:19:36Z txidx thread exit
+2026-11-01T21:19:36Z opencon thread start
+2026-11-01T21:19:36Z init message: Done loading
+2026-11-01T21:19:36Z msghand thread start
+2026-11-01T21:19:37Z Adding fixed seeds as -dnsseed=0 (or IPv4/IPv6 connections are disabled via -onlynet) and neither -addnode nor -seednode are provided
+2026-11-01T21:19:37Z Added 0 fixed seeds from reachable networks.
+2026-11-01T21:20:00Z init message: Creating wallet…
+2026-11-01T21:20:00Z [miner] Qcoin: derived mldsa44 keypair at HD index 0 (pk=1312 bytes) pk_hash=87908b66d177de09; stored in wallet database for descriptor 1036b5628fd74f4e
+2026-11-01T21:20:00Z [miner] Qcoin: imported wpq() descriptor for mldsa44 key 87908b66d177de09 (label "mldsa")
+2026-11-01T21:20:00Z [miner] Setting spkMan to active: id = 7cee118d567852f0f248a3d3f873811b87e60d5a6c4d98d4e58058955497e3a2, type = legacy, internal = false
+2026-11-01T21:20:00Z [miner] Setting spkMan to active: id = 02a59f0fac73ecdf3b2e43a222d9a60bfa3daa965ea30baa7f9025316894b226, type = p2sh-segwit, internal = false
+2026-11-01T21:20:00Z [miner] Setting spkMan to active: id = c3ef50cd276592066b94d2c69dc0f18544059b67c3dc1d9869290eb02e1dfe46, type = bech32, internal = false
+2026-11-01T21:20:00Z [miner] Setting spkMan to active: id = 6dce11f85b64767f0c74058f65760b21bee89f7ccb6f1676c06dabad9090025d, type = bech32m, internal = false
+2026-11-01T21:20:00Z [miner] Setting spkMan to active: id = 09fba86515d1f38b0451a85299a906c89ade3060df0e2a4fa1145aff15cae863, type = legacy, internal = true
+2026-11-01T21:20:00Z [miner] Setting spkMan to active: id = faab6843e4f791b4b45bc0e21f7a7fe29ac6ec4969c5e8e939f50b891047169a, type = p2sh-segwit, internal = true
+2026-11-01T21:20:00Z [miner] Setting spkMan to active: id = 650555e7ab221ba3aec96f64359bfb9b28b8e3a29f2da4e94cfee5fdf23f317d, type = bech32, internal = true
+2026-11-01T21:20:01Z [miner] Setting spkMan to active: id = 823fcc791ad913ff529b7ae9aee511f75a66effaff3c6f642bffbeb3691a2a59, type = bech32m, internal = true
+2026-11-01T21:20:01Z [miner] Wallet completed creation in             366ms
+2026-11-01T21:20:01Z [miner] setKeyPool.size() = 8000
+2026-11-01T21:20:01Z [miner] mapWallet.size() = 0
+2026-11-01T21:20:01Z [miner] m_address_book.size() = 1
+2026-11-01T21:20:01Z [miner] Qcoin: derived mldsa44 keypair at HD index 1 (pk=1312 bytes) pk_hash=91c1aa3815cf848b; stored in wallet database for descriptor 9b1a8315ac9ca25c
+2026-11-01T21:20:01Z [miner] Qcoin: imported wpq() descriptor for mldsa44 key 91c1aa3815cf848b (label "mine")
+2026-11-01T21:20:01Z Enabling script verification at block #1 (2d57eb9ee8bfff72e18600fb3f301410ee551c26362a30347ac381e0dca0252f): assumevalid=0 (always verify).
+2026-11-01T21:20:03Z Leaving InitialBlockDownload (latching to false)
+2026-11-01T21:20:03Z UpdateTip: new best=00000087a35d0e48fe057c2a4eb95877757850c440e2d0793b40a27e61e7808b height=1 version=0x20000000 log2_work=25.000022 tx=2 date='2026-11-01T21:20:01Z' progress=1.000000 cache=0.3MiB(1txo)
+2026-11-01T21:20:03Z [miner] MarkUnusedAddresses: Detected a used keypool item at index 0, mark all keypool items up to this item as used
+2026-11-01T21:20:03Z [miner] AddToWallet baaf17ae2eab58e7a76cf4bcc1de3378145b9d20d7f0616fe382b8474ca849fe new Confirmed (block=00000087a35d0e48fe057c2a4eb95877757850c440e2d0793b40a27e61e7808b, height=1, index=0)
+2026-11-01T21:20:08Z UpdateTip: new best=0000007138c02501902395de32c40fb1a6a631467302289601d18df651ac81f4 height=2 version=0x20000000 log2_work=25.584985 tx=3 date='2026-11-01T21:20:03Z' progress=1.000000 cache=0.3MiB(2txo)
+2026-11-01T21:20:08Z [miner] AddToWallet fcd8d0bc12ac9b67fe60b0686eb5113e8483545db817935d601c90d41e25cea2 new Confirmed (block=0000007138c02501902395de32c40fb1a6a631467302289601d18df651ac81f4, height=2, index=0)
+2026-11-01T21:20:20Z UpdateTip: new best=00000082c78c52876b5dfd8d6f3a9e54867d3497dc023a3badfd8fec0451662a height=3 version=0x20000000 log2_work=26.000022 tx=4 date='2026-11-01T21:20:08Z' progress=1.000000 cache=0.3MiB(3txo)
+2026-11-01T21:20:20Z [miner] AddToWallet f10a41f39bb505e2625726a00c09b8cf927d675b14dc5756a62104e5887cb2bd new Confirmed (block=00000082c78c52876b5dfd8d6f3a9e54867d3497dc023a3badfd8fec0451662a, height=3, index=0)
+2026-11-01T21:20:25Z UpdateTip: new best=000000bd1e7b7d72ace0a7ae0645274f5389aceed7572f03618be11d52fb5ae4 height=4 version=0x20000000 log2_work=26.321950 tx=5 date='2026-11-01T21:20:20Z' progress=1.000000 cache=0.3MiB(4txo)
+2026-11-01T21:20:25Z [miner] AddToWallet a9c71127861609bc1056856ab865699f396268179c80093e389b3a001aad2ef0 new Confirmed (block=000000bd1e7b7d72ace0a7ae0645274f5389aceed7572f03618be11d52fb5ae4, height=4, index=0)
+2026-11-01T21:20:25Z UpdateTip: new best=000000c6aec4cbadd1da1c0135b4af323985a01437a0e0e67314341ab8114618 height=5 version=0x20000000 log2_work=26.584985 tx=6 date='2026-11-01T21:20:25Z' progress=1.000000 cache=0.3MiB(5txo)
+2026-11-01T21:20:25Z [miner] AddToWallet 9b5afe994629104f9ce768f1949f0fe0a9d3d20a9da3418361680a046ab0ba40 new Confirmed (block=000000c6aec4cbadd1da1c0135b4af323985a01437a0e0e67314341ab8114618, height=5, index=0)
+2026-11-01T21:20:33Z UpdateTip: new best=0000005f39532380afc4e8743c34352f844b1932f42a028dcbe39c90ca6f24be height=6 version=0x20000000 log2_work=26.807377 tx=7 date='2026-11-01T21:20:25Z' progress=1.000000 cache=0.3MiB(6txo)
+2026-11-01T21:20:33Z [miner] AddToWallet 88bd7aaeb909b87d6ddd8603da3e4eee9c013357787482ba38613463b18689a1 new Confirmed (block=0000005f39532380afc4e8743c34352f844b1932f42a028dcbe39c90ca6f24be, height=6, index=0)
+2026-11-01T21:20:39Z UpdateTip: new best=00000011a9629099e1d1884f0891af0fe0b9680905e3b0487d3c3f5ccd2bdb90 height=7 version=0x20000000 log2_work=27.000022 tx=8 date='2026-11-01T21:20:33Z' progress=1.000000 cache=0.3MiB(7txo)
+2026-11-01T21:20:39Z [miner] AddToWallet 48bcdc10a5b10151b52d9a32196bee744fef7d4f28c0f2c35e95318a7e3ee970 new Confirmed (block=00000011a9629099e1d1884f0891af0fe0b9680905e3b0487d3c3f5ccd2bdb90, height=7, index=0)
+2026-11-01T21:20:42Z UpdateTip: new best=0000004f80195dc7e9cda2f719b147ee0c63f4400ebf768834c5f4d9538d49e7 height=8 version=0x20000000 log2_work=27.169947 tx=9 date='2026-11-01T21:20:39Z' progress=1.000000 cache=0.3MiB(8txo)
+2026-11-01T21:20:43Z [miner] AddToWallet 36231211e5bc45dc5ee50819662bffdea3f05f48e5334947838ed1ebcaa79752 new Confirmed (block=0000004f80195dc7e9cda2f719b147ee0c63f4400ebf768834c5f4d9538d49e7, height=8, index=0)
+2026-11-01T21:20:43Z UpdateTip: new best=0000009c0efb58e785b230dabb87f4915aa3b4c849e3ec9c14608b9d06c81408 height=9 version=0x20000000 log2_work=27.321950 tx=10 date='2026-11-01T21:20:42Z' progress=1.000000 cache=0.3MiB(9txo)
+2026-11-01T21:20:43Z [miner] AddToWallet 785e19210b11fc98131f8080def71629c1a8fa59a191533775cef83e51116444 new Confirmed (block=0000009c0efb58e785b230dabb87f4915aa3b4c849e3ec9c14608b9d06c81408, height=9, index=0)
+2026-11-01T21:20:57Z UpdateTip: new best=0000002a44277b9459f04e3225b685a2e060dfd03984ccdd8f6cc5fb522de072 height=10 version=0x20000000 log2_work=27.459454 tx=11 date='2026-11-01T21:20:43Z' progress=1.000000 cache=0.3MiB(10txo)
+2026-11-01T21:20:57Z [miner] AddToWallet 4c0483f9cdee28d573f6c2ef8d0a9333caef9d15bbf5f604f3ecb60b323dba96 new Confirmed (block=0000002a44277b9459f04e3225b685a2e060dfd03984ccdd8f6cc5fb522de072, height=10, index=0)

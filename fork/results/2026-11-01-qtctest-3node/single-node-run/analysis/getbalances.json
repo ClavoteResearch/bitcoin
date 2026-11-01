@@ -1,0 +1,12 @@
+{
+  "mine": {
+    "trusted": 0.00000000,
+    "untrusted_pending": 0.00000000,
+    "immature": 500.00000000,
+    "nonmempool": 0.00000000
+  },
+  "lastprocessedblock": {
+    "hash": "0000002a44277b9459f04e3225b685a2e060dfd03984ccdd8f6cc5fb522de072",
+    "height": 10
+  }
+}

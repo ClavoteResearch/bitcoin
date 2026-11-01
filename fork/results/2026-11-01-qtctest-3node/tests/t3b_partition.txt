@@ -1,0 +1,37 @@
+== t3b: partition and reorg ==
+clock A: ahead of NTP by 0.001765 s
+clock B: ahead of NTP by -0.000571 s
+clock C: ahead of NTP by -0.002017 s
+spendable 50-coin outputs: a9c71127861609bc1056856ab865699f396268179c80093e389b3a001aad2ef0 0 50.0;9b5afe994629104f9ce768f1949f0fe0a9d3d20a9da3418361680a046ab0ba40 0 50.0;88bd7aaeb909b87d6ddd8603da3e4eee9c013357787482ba38613463b18689a1 0 50.0;
+conflicting spends of a9c71127861609bc1056856ab865699f396268179c80093e389b3a001aad2ef0:0 : tx_to_B=98c36e1b5e6db2d33306a07fe67d572aefd57619c273340ea17414c127d9aa4f  tx_to_C=45b86018c516c5473797c076ec5ddb25782cd30e335f0a721236adfcf141f9a8
+height before partition: A=112 B=112 C=112
+--- partition B
+B connections: 0
+connections: A=1 B=0 C=1
+tx_to_B submitted to B (isolated): rc=0 result=98c36e1b5e6db2d33306a07fe67d572aefd57619c273340ea17414c127d9aa4f
+tx_to_C submitted to C: rc=0 result=45b86018c516c5473797c076ec5ddb25782cd30e335f0a721236adfcf141f9a8
+  mempool A: 45b86018c516    [tx_to_B=98c36e1b5e6d tx_to_C=45b86018c516]
+  mempool B: 98c36e1b5e6d    [tx_to_B=98c36e1b5e6d tx_to_C=45b86018c516]
+  mempool C: 45b86018c516    [tx_to_B=98c36e1b5e6d tx_to_C=45b86018c516]
+--- mine on both sides of the partition
+B (isolated) mined 1 block: mine_start=1793572492.781207867 mine_end=1793572493.901848258 hash=0000003de0dba64558e55c73fec3d10ef5a1cc0459cca91b547740f9e747e8fe height=113
+A/C side mined 2 blocks: mine_start=1793572495.676219735 mine_end=1793572497.621014770 hash=000000541f4cb329cc26fb9f145e4217eb1a5c6952f1f41ebd16f65196d314b1 height=113 mine_start=1793572497.624388124 mine_end=1793572497.656036119 hash=000000bf98a307e3359405f70a1f20f42a1180f2b0746f8f5ec371e59ab43765 height=114 
+  A: height=114 tip=000000bf98a3 mempool=[]
+  B: height=113 tip=0000003de0db mempool=[]
+  C: height=114 tip=000000bf98a3 mempool=[]
+two competing chains: B tip 0000003de0db (1 block, holds tx_to_B)  vs  A/C tip 000000bf98a3 (2 blocks, holds tx_to_C)
+--- reconnect B
+B network re-enabled at epoch 1793572521.498550078
+REORG: B's tip became A/C's tip (tip) 1.521 s after B's network was re-enabled (includes the manual 'addnode onetry' calls and the connection handshake)
+  A: height=114 tip=000000bf98a3 tx_to_B conf=none tx_to_C conf=2 mempool=[]
+  B: height=114 tip=000000bf98a3 tx_to_B conf=0 tx_to_C conf=2 mempool=[]
+  C: height=114 tip=000000bf98a3 tx_to_B conf=none tx_to_C conf=2 mempool=[]
+  B chain tips (shows the abandoned branch): h=114 len=0 active 000000bf98a3 | h=113 len=1 valid-fork 0000003de0db | h=111 len=1 valid-headers 000000303342
+  A chain tips: h=114 len=0 active 000000bf98a3 | h=113 len=1 headers-only 0000003de0db
+  B log excerpt:
+2026-11-01T22:31:53Z UpdateTip: new best=0000006e58c20e1da9afbb61631f1fc65b0131691d9aab3f4202fddac7b0b218 height=111 version=0x20000000 log2_work=30.807377 tx=118 date='2
+2026-11-01T22:32:20Z UpdateTip: new best=00000084cca4452e7839be256f91b3f926e6abc5fb7bf2c7fd0dcdd6e77d3e8b height=112 version=0x20000000 log2_work=30.820201 tx=119 date='2
+2026-11-01T22:34:53Z UpdateTip: new best=0000003de0dba64558e55c73fec3d10ef5a1cc0459cca91b547740f9e747e8fe height=113 version=0x20000000 log2_work=30.832912 tx=121 date='2
+2026-11-01T22:35:23Z UpdateTip: new best=00000084cca4452e7839be256f91b3f926e6abc5fb7bf2c7fd0dcdd6e77d3e8b height=112 version=0x20000000 log2_work=30.820201 tx=119 date='2
+2026-11-01T22:35:23Z UpdateTip: new best=000000541f4cb329cc26fb9f145e4217eb1a5c6952f1f41ebd16f65196d314b1 height=113 version=0x20000000 log2_work=30.832912 tx=121 date='2
+2026-11-01T22:35:23Z UpdateTip: new best=000000bf98a307e3359405f70a1f20f42a1180f2b0746f8f5ec371e59ab43765 height=114 version=0x20000000 log2_work=30.845512 tx=122 date='2

@@ -1,0 +1,3 @@
+27ff8a7d consensus: witness v2 script path with OP_CHECKMLDSAVERIFY
+3a8c9c5a doc: record the value rule for the white paper; Qcoin is a separate coin
+d8afb830 consensus: value rule - only witness v2 ML-DSA outputs may carry value (separate coin)

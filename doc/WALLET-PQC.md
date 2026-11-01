@@ -35,6 +35,7 @@ the shell tests in `fork/test/` on the default build unless marked otherwise.
 | Faucet | `fork/tools/qtc-faucet.py` | **Working.** `fund` (mines to the faucet wallet), `send`, `serve` (HTTP form, pays `tq1z...` addresses only by default, per-address cooldown and per-IP limit via `X-Forwarded-For`, state in `faucet-state.json`). Test: `regtest_qtctest_faucet.sh`. |
 | Genesis helper | `fork/tools/mine-genesis.py` | **Working.** Deterministic multi-process genesis miner; prints the C++ lines to paste. Test: `test_mine_genesis.sh`. |
 | Launch docs | this file: "Public launch", "Testnet launch", "Raising the proof-of-work difficulty" | Runbook for seed node, second node, explorer, faucet and seed publishing. Hostnames are placeholders until a public host exists. |
+| Network measurements | `fork/results/2026-11-01-qtctest-3node/` | **Measured once.** Three Vast.ai nodes on `qtctest` at 27ff8a7: peer-to-peer sends, a script-path spend, three double-spend rounds (including a partition and a 1.5 s reorg) and a 50-transaction burst all behaved correctly. Transactions relay in about 3.5 to 5 s (Bitcoin Core's announcement batching), blocks in under 0.3 s, and a one-input spend is about 1 kvB. One run per row, minimal difficulty, manual mining; `RESULTS.md` there lists the caveats. |
 | Experimental build | `-DQCOIN_WITNESS_V2_EXPERIMENTAL=ON` | Adds ML-DSA-87 (param id `0x7f`) and the `qcoin-v2-selftest` binary. Nothing in the default build depends on it. |
 
 With `-walletsigscheme=ecdsa` (the default) the wallet, address types and

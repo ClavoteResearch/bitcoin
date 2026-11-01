@@ -1,0 +1,19 @@
+{
+  "chain": "qtctest",
+  "blocks": 116,
+  "headers": 116,
+  "bestblockhash": "000000835bd054c2b08d953d63b283c7e6f75fa1f42b8ec2d533bb568f7b9549",
+  "bits": "1e00ffff",
+  "target": "000000ffff000000000000000000000000000000000000000000000000000000",
+  "difficulty": 0.00390625,
+  "time": 1793572616,
+  "mediantime": 1793572312,
+  "verificationprogress": 1,
+  "initialblockdownload": false,
+  "chainwork": "0000000000000000000000000000000000000000000000000000000075007500",
+  "size_on_disk": 275338,
+  "pruned": false,
+  "warnings": [
+    "This is a pre-release test build - use at your own risk - do not use for mining or merchant applications"
+  ]
+}

@@ -1,0 +1,44 @@
+== t3: double spend ==
+clock A: ahead of NTP by 0.00185 s
+clock B: ahead of NTP by 0.002103 s
+clock C: ahead of NTP by -0.001829 s
+outputs used: fcd8d0bc12ac9b67fe60b0686eb5113e8483545db817935d601c90d41e25cea2 0 50.0;f10a41f39bb505e2625726a00c09b8cf927d675b14dc5756a62104e5887cb2bd 0 50.0;a9c71127861609bc1056856ab865699f396268179c80093e389b3a001aad2ef0 0 50.0;
+--- round 1: mempool race
+r1: tx_to_B=ddc9414b9ceea64aeb089e527abc7e95ea829928360cd000d476093a9c58d47f  tx_to_C=d98055e32461ac77f274d1f0acd84f6235adb8bc411a9e39e3b0d8558c0f6191   (both spend fcd8d0bc12ac9b67fe60b0686eb5113e8483545db817935d601c90d41e25cea2:0)
+  submit to B: bcast_start=1793572194.991084957 rc=0 result=ddc9414b9ceea64aeb089e527abc7e95ea829928360cd000d476093a9c58d47f
+  submit to C: bcast_start=1793572195.096909403 rc=0 result=d98055e32461ac77f274d1f0acd84f6235adb8bc411a9e39e3b0d8558c0f6191
+  gap between the two submissions (NTP-corrected): 0.106 s (C minus B)
+  mempool A after 10 s: ddc9414b9cee    [B-tx=ddc9414b9cee C-tx=d98055e32461]
+  mempool B after 10 s: ddc9414b9cee    [B-tx=ddc9414b9cee C-tx=d98055e32461]
+  mempool C after 10 s: d98055e32461    [B-tx=ddc9414b9cee C-tx=d98055e32461]
+  block mined on A: mine_start=1793572212.334559031 mine_end=1793572213.390875280 hash=0000005a12586809321f120fef767620b8e3b7e100725dcb7834bdac28f977fc height=110
+  A: tx_to_B first=mempool@1793572195.537005227 conf=confirmed@1793572213.415309856 | tx_to_C first= conf=
+  B: tx_to_B first=mempool@1793572195.081809772 conf=confirmed@1793572213.462891941 | tx_to_C first= conf=
+  C: tx_to_B first=confirmed@1793572213.465030805 conf=confirmed@1793572213.499088299 | tx_to_C first=mempool@1793572195.139158905 conf=
+  WINNER (confirmed on A): tx_to_B (ddc9414b9cee)
+  A: tx_to_B conf=1 tx_to_C conf=none mempool=[] tip=0000005a1258
+  B: tx_to_B conf=1 tx_to_C conf=none mempool=[] tip=0000005a1258
+  C: tx_to_B conf=1 tx_to_C conf=none mempool=[] tip=0000005a1258
+  RESOLUTION: first submission -> winner confirmed on B: 18.472 s, on C: 18.508 s (includes the 10 s settle wait and a manual block)
+--- round 2: competing blocks (fork)
+r2: tx_to_B=6ef6dac6326ea3456e982254f8c8079c6c1a233e6f4bb74373d432b27a1bab92  tx_to_C=011a89c0cc5c617284d6554c1f079f7d5c4a3c82ccfc0d6f20f0d30ef694a13a   (both spend f10a41f39bb505e2625726a00c09b8cf927d675b14dc5756a62104e5887cb2bd:0)
+  submit to B: bcast_start=1793572294.351579355 rc=0 result=6ef6dac6326ea3456e982254f8c8079c6c1a233e6f4bb74373d432b27a1bab92
+  submit to C: bcast_start=1793572294.557534964 rc=0 result=011a89c0cc5c617284d6554c1f079f7d5c4a3c82ccfc0d6f20f0d30ef694a13a
+  gap between the two submissions (NTP-corrected): 0.206 s (C minus B)
+  mempool A before mining: 011a89c0cc5c    [B-tx=6ef6dac6326e C-tx=011a89c0cc5c]
+  mempool B before mining: 6ef6dac6326e    [B-tx=6ef6dac6326e C-tx=011a89c0cc5c]
+  mempool C before mining: 011a89c0cc5c    [B-tx=6ef6dac6326e C-tx=011a89c0cc5c]
+  block mined on B: mine_start=1793572312.488076778 mine_end=1793572314.126267017 hash=0000003033429fdc6fe98615939a8d72fbb93f8beda97555473faddfa2aa680a height=111
+  block mined on C: mine_start=1793572312.739678298 mine_end=1793572313.414213612 hash=0000006e58c20e1da9afbb61631f1fc65b0131691d9aab3f4202fddac7b0b218 height=111
+  A tips after both blocks: h=111 active 0000006e58c2
+  B tips after both blocks: h=111 active 0000006e58c2 | h=111 valid-headers 000000303342
+  C tips after both blocks: h=111 active 0000006e58c2
+  active tip: A=0000006e58c2 B=0000006e58c2 C=0000006e58c2   (A follows whichever block reached it first)
+  tie-breaking block mined on A (extends A's active tip 0000006e58c2): mine_start=1793572340.127945388 mine_end=1793572340.255687563 hash=00000084cca4452e7839be256f91b3f926e6abc5fb7bf2c7fd0dcdd6e77d3e8b height=112
+  B tip change: 00000084cca4 at +0.032 s after A's block
+  C tip change: 00000084cca4 at +0.062 s after A's block
+  A: tx_to_B conf=none tx_to_C conf=2 mempool=[] tip=00000084cca4  tips: h=112 active 00000084cca4
+  B: tx_to_B conf=none tx_to_C conf=2 mempool=[] tip=00000084cca4  tips: h=112 active 00000084cca4 | h=111 valid-headers 000000303342
+  C: tx_to_B conf=none tx_to_C conf=2 mempool=[] tip=00000084cca4  tips: h=112 active 00000084cca4
+  WINNER round 2: tx_to_C (C's fork)
+  final tips equal on all nodes? A=00000084cca4 B=00000084cca4 C=00000084cca4

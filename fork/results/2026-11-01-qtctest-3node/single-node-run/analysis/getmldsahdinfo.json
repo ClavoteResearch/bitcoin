@@ -1,0 +1,17 @@
+{
+  "next_index": 2,
+  "keys": [
+    {
+      "index": 1,
+      "address": "tq1zgxkwzxxkzqqyf6p3xp72r6yfxvpjpy56ecjgxdqjmrr3jzpe5e8q3tmjl2",
+      "descriptor_id": "9b1a8315ac9ca25cb8578731db18b10e76a5aea5ec4ada3e3ff4d4f235bf3b3b",
+      "stored_keys": 1
+    },
+    {
+      "index": 0,
+      "address": "tq1zuc6fnv5hz9p3akcyv5k9z9pupra54g78s7yr435q7anzl7fgf2vsn7j3nw",
+      "descriptor_id": "1036b5628fd74f4e9715f7f476330d9f0f4c30e94bf24d6ee030d8d56906f84b",
+      "stored_keys": 1
+    }
+  ]
+}

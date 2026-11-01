@@ -1,0 +1,331 @@
+
+
+
+
+
+2026-11-01T22:25:14Z Bitcoin Core version v32.99.0-27ff8a7d5469 (release build)
+2026-11-01T22:25:14Z Log output may contain privacy-sensitive information. Be cautious when sharing logs.
+2026-11-01T22:25:14Z Qcoin: wallet signature scheme = mldsa44
+2026-11-01T22:25:14Z Using the 'x86_shani(1way;2way)' SHA256 implementation
+2026-11-01T22:25:14Z Using RdSeed as an additional entropy source
+2026-11-01T22:25:14Z Using RdRand as an additional entropy source
+2026-11-01T22:25:14Z Default data directory /root/.bitcoin
+2026-11-01T22:25:14Z Using data directory /root/qtctest-data/qtctest
+2026-11-01T22:25:14Z Config file: /root/qtctest-data/bitcoin.conf (not found, skipping)
+2026-11-01T22:25:14Z Command-line arg: chain="qtctest"
+2026-11-01T22:25:14Z Command-line arg: daemon=""
+2026-11-01T22:25:14Z Command-line arg: datadir="/root/qtctest-data"
+2026-11-01T22:25:14Z Command-line arg: dnsseed="0"
+2026-11-01T22:25:14Z Command-line arg: fallbackfee="0.0001"
+2026-11-01T22:25:14Z Command-line arg: listen="1"
+2026-11-01T22:25:14Z Command-line arg: port="28333"
+2026-11-01T22:25:14Z Command-line arg: txindex="1"
+2026-11-01T22:25:14Z Using at most 200 automatic connections (1024 file descriptors available)
+2026-11-01T22:25:14Z scheduler thread start
+2026-11-01T22:25:14Z Binding RPC on address ::1 port 28332
+2026-11-01T22:25:14Z Binding RPC on address 127.0.0.1 port 28332
+2026-11-01T22:25:14Z Generated RPC authentication cookie /root/qtctest-data/qtctest/.cookie
+2026-11-01T22:25:14Z Permissions used for cookie: rw-------
+2026-11-01T22:25:14Z Using random cookie authentication.
+2026-11-01T22:25:14Z Starting HTTP server with 16 worker threads
+2026-11-01T22:25:14Z http.00 thread start
+2026-11-01T22:25:14Z http.03 thread start
+2026-11-01T22:25:14Z http.05 thread start
+2026-11-01T22:25:14Z http.04 thread start
+2026-11-01T22:25:14Z http.06 thread start
+2026-11-01T22:25:14Z http.02 thread start
+2026-11-01T22:25:14Z http.01 thread start
+2026-11-01T22:25:14Z http.11 thread start
+2026-11-01T22:25:14Z http.08 thread start
+2026-11-01T22:25:14Z http.07 thread start
+2026-11-01T22:25:14Z http.10 thread start
+2026-11-01T22:25:14Z http.12 thread start
+2026-11-01T22:25:14Z http.13 thread start
+2026-11-01T22:25:14Z http.09 thread start
+2026-11-01T22:25:14Z http.14 thread start
+2026-11-01T22:25:14Z Using wallet directory /root/qtctest-data/qtctest/wallets
+2026-11-01T22:25:14Z http thread start
+2026-11-01T22:25:14Z http.15 thread start
+2026-11-01T22:25:14Z Using SQLite Version 3.37.2
+2026-11-01T22:25:14Z init message: Verifying wallet(s)…
+2026-11-01T22:25:14Z Using /16 prefix for IP bucketing
+2026-11-01T22:25:14Z init message: Loading P2P addresses…
+2026-11-01T22:25:14Z Creating peers.dat because the file was not found ("/root/qtctest-data/qtctest/peers.dat")
+2026-11-01T22:25:15Z init message: Loading banlist…
+2026-11-01T22:25:15Z Recreating the banlist database
+2026-11-01T22:25:15Z SetNetworkActive: true
+2026-11-01T22:25:15Z Cache configuration:
+2026-11-01T22:25:15Z * Using 2.0 MiB for block index database
+2026-11-01T22:25:15Z * Using 102.4 MiB for transaction index database
+2026-11-01T22:25:15Z * Using 8.0 MiB for chain state database
+2026-11-01T22:25:15Z * Using 911.6 MiB for in-memory UTXO set (plus up to 286.1 MiB of unused mempool space)
+2026-11-01T22:25:15Z Script verification uses 15 additional threads
+2026-11-01T22:25:15Z Using obfuscation key for blocksdir *.dat files (/root/qtctest-data/qtctest/blocks): 'f482cf194ad944d8'
+2026-11-01T22:25:15Z Opening LevelDB in /root/qtctest-data/qtctest/blocks/index
+2026-11-01T22:25:15Z Opened LevelDB successfully
+2026-11-01T22:25:15Z Using obfuscation key for /root/qtctest-data/qtctest/blocks/index: 0000000000000000
+2026-11-01T22:25:15Z Using 16 MiB out of 16 MiB requested for signature cache, able to store 524288 elements
+2026-11-01T22:25:15Z Using 16 MiB out of 16 MiB requested for script execution cache, able to store 524288 elements
+2026-11-01T22:25:15Z init message: Loading block index…
+2026-11-01T22:25:15Z Validating signatures for all blocks.
+2026-11-01T22:25:15Z Setting nMinimumChainWork=0000000000000000000000000000000000000000000000000000000000000000
+2026-11-01T22:25:15Z Loading block index db: last block file = 0
+2026-11-01T22:25:15Z Loading block index db: last block file info: CBlockFileInfo(blocks=0, size=0, heights=0...0, time=1970-01-01...1970-01-01)
+2026-11-01T22:25:15Z Checking all blk files are present...
+2026-11-01T22:25:15Z Initializing chainstate Chainstate [ibd] @ height -1 (null)
+2026-11-01T22:25:15Z Opening LevelDB in /root/qtctest-data/qtctest/chainstate
+2026-11-01T22:25:15Z Opened LevelDB successfully
+2026-11-01T22:25:15Z Wrote new obfuscation key for /root/qtctest-data/qtctest/chainstate: f9dd084ab5cdb13b
+2026-11-01T22:25:15Z Using obfuscation key for /root/qtctest-data/qtctest/chainstate: f9dd084ab5cdb13b
+2026-11-01T22:25:15Z prevout.00 thread start
+2026-11-01T22:25:15Z prevout.01 thread start
+2026-11-01T22:25:15Z prevout.02 thread start
+2026-11-01T22:25:15Z prevout.04 thread start
+2026-11-01T22:25:15Z prevout.05 thread start
+2026-11-01T22:25:15Z prevout.06 thread start
+2026-11-01T22:25:15Z Block input prevout fetching uses 8 additional threads
+2026-11-01T22:25:15Z prevout.03 thread start
+2026-11-01T22:25:15Z prevout.07 thread start
+2026-11-01T22:25:15Z init message: Verifying blocks…
+2026-11-01T22:25:15Z Block index and chainstate loaded
+2026-11-01T22:25:15Z /root/qtctest-data/qtctest/fees/block_policy_estimates.dat is not found. Continue anyway.
+2026-11-01T22:25:15Z Opening LevelDB in /root/qtctest-data/qtctest/indexes/txindex
+2026-11-01T22:25:15Z Opened LevelDB successfully
+2026-11-01T22:25:15Z Using obfuscation key for /root/qtctest-data/qtctest/indexes/txindex: 0000000000000000
+2026-11-01T22:25:15Z Setting NODE_NETWORK in non-prune mode
+2026-11-01T22:25:15Z initload thread start
+2026-11-01T22:25:15Z UpdateTip: new best=0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437 height=0 version=0x00000001 log2_work=24.000022 tx=1 date='2025-10-30T00:00:00Z' progress=0.000031 cache=0.3MiB(0txo)
+2026-11-01T22:25:15Z block tree size = 1
+2026-11-01T22:25:15Z nBestHeight = 0
+2026-11-01T22:25:15Z Failed to open mempool file. Continuing anyway.
+2026-11-01T22:25:15Z initload thread exit
+2026-11-01T22:25:15Z txidx thread start
+2026-11-01T22:25:15Z mapport thread start
+2026-11-01T22:25:15Z txindex is enabled at height 0
+2026-11-01T22:25:15Z txidx thread exit
+2026-11-01T22:25:15Z torcontrol thread start
+2026-11-01T22:25:15Z Bound to 127.0.0.1:28334
+2026-11-01T22:25:15Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:15Z Bound to [::]:28333
+2026-11-01T22:25:15Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:15Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:25:15Z Bound to 0.0.0.0:28333
+2026-11-01T22:25:15Z 0 block-relay-only anchors will be tried for connections.
+2026-11-01T22:25:15Z init message: Starting network threads…
+2026-11-01T22:25:15Z DNS seeding disabled
+2026-11-01T22:25:15Z net thread start
+2026-11-01T22:25:15Z addcon thread start
+2026-11-01T22:25:15Z opencon thread start
+2026-11-01T22:25:15Z init message: Done loading
+2026-11-01T22:25:15Z msghand thread start
+2026-11-01T22:25:15Z Adding fixed seeds as -dnsseed=0 (or IPv4/IPv6 connections are disabled via -onlynet) and neither -addnode nor -seednode are provided
+2026-11-01T22:25:15Z Added 0 fixed seeds from reachable networks.
+2026-11-01T22:25:16Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:16Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:16Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:25:17Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:17Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:17Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:25:19Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:19Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:19Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:25:23Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:23Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:23Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:25:28Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:28Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:28Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:25:35Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:35Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:35Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:25:47Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:25:47Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:25:47Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:26:04Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:26:04Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:26:04Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:26:08Z Synchronizing blockheaders, height: 105 (~100.00%)
+2026-11-01T22:26:08Z Enabling script verification at block #1 (00000087a35d0e48fe057c2a4eb95877757850c440e2d0793b40a27e61e7808b): assumevalid=0 (always verify).
+2026-11-01T22:26:08Z Leaving InitialBlockDownload (latching to false)
+2026-11-01T22:26:08Z UpdateTip: new best=00000087a35d0e48fe057c2a4eb95877757850c440e2d0793b40a27e61e7808b height=1 version=0x20000000 log2_work=25.000022 tx=2 date='2026-11-01T21:20:01Z' progress=0.031056 cache=0.3MiB(1txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000007138c02501902395de32c40fb1a6a631467302289601d18df651ac81f4 height=2 version=0x20000000 log2_work=25.584985 tx=3 date='2026-11-01T21:20:03Z' progress=0.046296 cache=0.3MiB(2txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000082c78c52876b5dfd8d6f3a9e54867d3497dc023a3badfd8fec0451662a height=3 version=0x20000000 log2_work=26.000022 tx=4 date='2026-11-01T21:20:08Z' progress=0.061350 cache=0.3MiB(3txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000bd1e7b7d72ace0a7ae0645274f5389aceed7572f03618be11d52fb5ae4 height=4 version=0x20000000 log2_work=26.321950 tx=5 date='2026-11-01T21:20:20Z' progress=0.076220 cache=0.3MiB(4txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000c6aec4cbadd1da1c0135b4af323985a01437a0e0e67314341ab8114618 height=5 version=0x20000000 log2_work=26.584985 tx=6 date='2026-11-01T21:20:25Z' progress=0.090909 cache=0.3MiB(5txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000005f39532380afc4e8743c34352f844b1932f42a028dcbe39c90ca6f24be height=6 version=0x20000000 log2_work=26.807377 tx=7 date='2026-11-01T21:20:25Z' progress=0.105422 cache=0.3MiB(6txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000011a9629099e1d1884f0891af0fe0b9680905e3b0487d3c3f5ccd2bdb90 height=7 version=0x20000000 log2_work=27.000022 tx=8 date='2026-11-01T21:20:33Z' progress=0.119760 cache=0.3MiB(7txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000004f80195dc7e9cda2f719b147ee0c63f4400ebf768834c5f4d9538d49e7 height=8 version=0x20000000 log2_work=27.169947 tx=9 date='2026-11-01T21:20:39Z' progress=0.133929 cache=0.3MiB(8txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000009c0efb58e785b230dabb87f4915aa3b4c849e3ec9c14608b9d06c81408 height=9 version=0x20000000 log2_work=27.321950 tx=10 date='2026-11-01T21:20:42Z' progress=0.147929 cache=0.3MiB(9txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000002a44277b9459f04e3225b685a2e060dfd03984ccdd8f6cc5fb522de072 height=10 version=0x20000000 log2_work=27.459454 tx=11 date='2026-11-01T21:20:43Z' progress=0.161765 cache=0.3MiB(10txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000007639037d3d701217b70d8c1fb7236c55e98cb31a2a389e08f401f03188 height=11 version=0x20000000 log2_work=27.584985 tx=12 date='2026-11-01T22:16:49Z' progress=0.175439 cache=0.3MiB(11txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000039bc0d178b83fd25bd547977c6637bfc470673d642a4310d4666f5144a height=12 version=0x20000000 log2_work=27.700462 tx=13 date='2026-11-01T22:16:52Z' progress=0.188953 cache=0.3MiB(12txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000ead7a8931e252059c7078aa739714d87114b73eaf92fef3cdd53721c01 height=13 version=0x20000000 log2_work=27.807377 tx=14 date='2026-11-01T22:16:53Z' progress=0.202312 cache=0.3MiB(13txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000944bd4764ab612e75fc6d3b0402d5e09653773b64234012e5443b876dd height=14 version=0x20000000 log2_work=27.906913 tx=15 date='2026-11-01T22:16:53Z' progress=0.215517 cache=0.3MiB(14txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000001a02f7a97e0608be736bdc8f380f6cb67de3790e0485d737d1b87b87f9 height=15 version=0x20000000 log2_work=28.000022 tx=16 date='2026-11-01T22:16:54Z' progress=0.228571 cache=0.3MiB(15txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000003eb338bad00dabdcfc6a32d8148dd5dcdb27b4843f979354c9943ef5a0 height=16 version=0x20000000 log2_work=28.087485 tx=17 date='2026-11-01T22:16:58Z' progress=0.241477 cache=0.3MiB(16txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000b789b855010f6cfefdb5492ed7772d66ac03084c6647179043d340fd97 height=17 version=0x20000000 log2_work=28.169947 tx=18 date='2026-11-01T22:17:00Z' progress=0.254237 cache=0.3MiB(17txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000003a350638cd46a0a7eff95e064f8f864338263e6911d525b8c37eefac33 height=18 version=0x20000000 log2_work=28.247950 tx=19 date='2026-11-01T22:17:04Z' progress=0.266854 cache=0.3MiB(18txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f1d14c3016cf86610713626928365bf28b707dd15d503a2183bb88e438 height=19 version=0x20000000 log2_work=28.321950 tx=20 date='2026-11-01T22:17:04Z' progress=0.279330 cache=0.3MiB(19txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000a8c1db7c44fd7260c4e0a298e3bbf1743dd12895f2af65808fa1679b65 height=20 version=0x20000000 log2_work=28.392339 tx=21 date='2026-11-01T22:17:10Z' progress=0.291667 cache=0.3MiB(20txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000006e298a516132aad52c543fd27d676dab41e41eede755b38dad6412b33d height=21 version=0x20000000 log2_work=28.459454 tx=22 date='2026-11-01T22:17:12Z' progress=0.303867 cache=0.3MiB(21txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000beaf43d4549293267b27104488fb734cf7e59d0b6b3d71c689024449e8 height=22 version=0x20000000 log2_work=28.523584 tx=23 date='2026-11-01T22:17:16Z' progress=0.315934 cache=0.3MiB(22txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000dd4c1746398d5ee58bb0e6e61c10b3c16c2f4a1ac189109db449e0d4e9 height=23 version=0x20000000 log2_work=28.584985 tx=24 date='2026-11-01T22:17:25Z' progress=0.327869 cache=0.3MiB(23txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f667850a93a78e4c6b5393f52c4a4a25ea397afa49803f18af1a9a7217 height=24 version=0x20000000 log2_work=28.643878 tx=25 date='2026-11-01T22:17:28Z' progress=0.339674 cache=0.3MiB(24txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000009d22b410c52412896a4d54f5a2fcc73fca2ea6f537645f8e6f009bc9c4 height=25 version=0x20000000 log2_work=28.700462 tx=26 date='2026-11-01T22:17:31Z' progress=0.351351 cache=0.3MiB(25txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000634ea94ac763caea1c963634cd0839b579bed3cc780cfd6c5d399acee1 height=26 version=0x20000000 log2_work=28.754910 tx=27 date='2026-11-01T22:17:36Z' progress=0.362903 cache=0.3MiB(26txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000001e5e713227806a7e9e674382296e60c7d21059e5fe334c16f34fca4d59 height=27 version=0x20000000 log2_work=28.807377 tx=28 date='2026-11-01T22:17:38Z' progress=0.374332 cache=0.3MiB(27txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000798dda4f6fd8e3895714feaf178d7d1b9142667a599dba9544608c08a9 height=28 version=0x20000000 log2_work=28.858003 tx=29 date='2026-11-01T22:17:40Z' progress=0.385638 cache=0.3MiB(28txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f078c58a10f8ebe8a7eae5e29771601e1e31f4ca2106c48a9cdf1adb84 height=29 version=0x20000000 log2_work=28.906913 tx=30 date='2026-11-01T22:17:44Z' progress=0.396825 cache=0.3MiB(29txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000e3f4b23f9f483445e11b1bb6b7a9f96bd1c07cff860a54aab999e5c1c6 height=30 version=0x20000000 log2_work=28.954218 tx=31 date='2026-11-01T22:17:47Z' progress=0.407895 cache=0.3MiB(30txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000a29a3cea796bac97a16b25b6041425bafbfccad8567e4da6fe0230d6e7 height=31 version=0x20000000 log2_work=29.000022 tx=32 date='2026-11-01T22:17:51Z' progress=0.418848 cache=0.3MiB(31txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000021ca59bb938e55be140d1f8f87f56e352a416672bab443d5151918c698 height=32 version=0x20000000 log2_work=29.044416 tx=33 date='2026-11-01T22:17:58Z' progress=0.429687 cache=0.3MiB(32txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000a9fa783ed5b22463bbb683e0389f9b8abce7aecf7909933d537a6dbc67 height=33 version=0x20000000 log2_work=29.087485 tx=34 date='2026-11-01T22:17:59Z' progress=0.440415 cache=0.3MiB(33txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000009c5dcfb0fca65ae1a927c33fb009df450eead153a99c0d8726a78cb108 height=34 version=0x20000000 log2_work=29.129305 tx=35 date='2026-11-01T22:18:05Z' progress=0.451031 cache=0.3MiB(34txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000c75ea4e63e3fd0e9a635b2a2158bb179168ed68d8a605b2cd7c28432d9 height=35 version=0x20000000 log2_work=29.169947 tx=36 date='2026-11-01T22:18:06Z' progress=0.461538 cache=0.3MiB(35txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000fd5287cdf963569eeeb71db85df03569a8fe1f5d7db61384821e0ca55a height=36 version=0x20000000 log2_work=29.209475 tx=37 date='2026-11-01T22:18:11Z' progress=0.471939 cache=0.3MiB(36txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000000577e9c3672e40e5b0fc9d87a21e5541bef7e2a9d138999e94c606b107 height=37 version=0x20000000 log2_work=29.247950 tx=38 date='2026-11-01T22:18:13Z' progress=0.482234 cache=0.3MiB(37txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000003af17cc320181059706ba8898cfa768855a50a57646a2fb0af8ea6ce00 height=38 version=0x20000000 log2_work=29.285424 tx=39 date='2026-11-01T22:18:13Z' progress=0.492424 cache=0.3MiB(38txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000ea6d68af7603bec27c8375abd58be03f058935827cf176edf4ab016873 height=39 version=0x20000000 log2_work=29.321950 tx=40 date='2026-11-01T22:18:13Z' progress=0.502513 cache=0.3MiB(39txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000ca584d7dd8bb59f51d236f2b9cbba983c0e448f97549c38a24bba047d5 height=40 version=0x20000000 log2_work=29.357574 tx=41 date='2026-11-01T22:18:15Z' progress=0.512500 cache=0.3MiB(40txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000eb76ae0a0dc1a546250c968a5aa2b9ae8543da4e08352ff5e3bd401af4 height=41 version=0x20000000 log2_work=29.392339 tx=42 date='2026-11-01T22:18:18Z' progress=0.522388 cache=0.3MiB(41txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000a5d910e84a399ed7fa50cfd42e7aacd2d29af00cd24c2aa12aca34c5c0 height=42 version=0x20000000 log2_work=29.426287 tx=43 date='2026-11-01T22:18:23Z' progress=0.532178 cache=0.3MiB(42txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000030e61edd887562936b6bc5090e5a3c717accf653a53cc437f413ca81f1 height=43 version=0x20000000 log2_work=29.459454 tx=44 date='2026-11-01T22:18:24Z' progress=0.541872 cache=0.3MiB(43txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000acaf90ca4c11286bbe6e167b20b7996c7e4f8b4fcdffc1b994296316a4 height=44 version=0x20000000 log2_work=29.491875 tx=45 date='2026-11-01T22:18:24Z' progress=0.551471 cache=0.3MiB(44txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000000ff9a1d2ebc5aee523044643db33b4f199455bf32ffc867f8a13db8e80 height=45 version=0x20000000 log2_work=29.523584 tx=46 date='2026-11-01T22:18:25Z' progress=0.560976 cache=0.3MiB(45txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000d3b9882400c86cac88ca0b6678aaf24008531a9d975caa4e722d9d2e9e height=46 version=0x20000000 log2_work=29.554611 tx=47 date='2026-11-01T22:18:26Z' progress=0.570388 cache=0.3MiB(46txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000d923a981ce6842143e50ee7948c88441d3fde3b4a9da07fa617b590c70 height=47 version=0x20000000 log2_work=29.584985 tx=48 date='2026-11-01T22:18:26Z' progress=0.579710 cache=0.3MiB(47txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000e2f166f755158b258ad9c6b9bc70365a89bc09aa5d23cfc978b51359a1 height=48 version=0x20000000 log2_work=29.614732 tx=49 date='2026-11-01T22:18:29Z' progress=0.588942 cache=0.3MiB(48txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000c3a1f8e06367177b57a41a9c511fda7ff46c3a35570951a5e7358bec65 height=49 version=0x20000000 log2_work=29.643878 tx=50 date='2026-11-01T22:18:30Z' progress=0.598086 cache=0.3MiB(49txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000047bd370db5b87df1207a8169b0f8479043c4334b502b043acdb0f8128c height=50 version=0x20000000 log2_work=29.672447 tx=51 date='2026-11-01T22:18:31Z' progress=0.607143 cache=0.3MiB(50txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f5c752257044f7259567761a78290f0f6d1dadc1fd1a45a25d38c184fc height=51 version=0x20000000 log2_work=29.700462 tx=52 date='2026-11-01T22:18:36Z' progress=0.616114 cache=0.3MiB(51txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000d1c2ca105ab30872fcd4d90d50d5114e2836ca291eb3ca7c467ae4e64b height=52 version=0x20000000 log2_work=29.727942 tx=53 date='2026-11-01T22:18:51Z' progress=0.625000 cache=0.3MiB(52txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000012ecc077a750eff6ae4f9a98b87d43ed341a06bb8c29d9d26cac7a5e3b height=53 version=0x20000000 log2_work=29.754910 tx=54 date='2026-11-01T22:18:57Z' progress=0.633803 cache=0.3MiB(53txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000004866a5477b518aad91ac87a354f05bcd03d7f8136c0e7e5484658121ba height=54 version=0x20000000 log2_work=29.781382 tx=55 date='2026-11-01T22:18:57Z' progress=0.642523 cache=0.3MiB(54txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000007157b08c3d2d7d03605fc886ceb966a4aea3dfddded0dcbc553d622636 height=55 version=0x20000000 log2_work=29.807377 tx=56 date='2026-11-01T22:18:58Z' progress=0.651163 cache=0.3MiB(55txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000038514187bcead6238e1ce7fded8989e674355c21a6f5957b564f86b3ae height=56 version=0x20000000 log2_work=29.832912 tx=57 date='2026-11-01T22:18:58Z' progress=0.659722 cache=0.3MiB(56txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000004d205e7307e38eb90de0c69377506cded635c1e983a6c27802d109b29a height=57 version=0x20000000 log2_work=29.858003 tx=58 date='2026-11-01T22:19:00Z' progress=0.668203 cache=0.3MiB(57txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000aa085768fa2d342341cf63d8578b9762862d7c3620c90ff6c3a95853d3 height=58 version=0x20000000 log2_work=29.882665 tx=59 date='2026-11-01T22:19:06Z' progress=0.676606 cache=0.3MiB(58txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000e744b83fcbb63e801d904e4a165d0e80119d23c2226b5f1b9df8405908 height=59 version=0x20000000 log2_work=29.906913 tx=60 date='2026-11-01T22:19:10Z' progress=0.684932 cache=0.3MiB(59txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000066a4774c7a23b98a940c7a18f96b9b671d765637902d2a6ab9b3cd933c height=60 version=0x20000000 log2_work=29.930759 tx=61 date='2026-11-01T22:19:17Z' progress=0.693182 cache=0.3MiB(60txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000d12c78c5360859e38cf8408e67e25c2f0bbf8a2d880f653a9f0d5b6876 height=61 version=0x20000000 log2_work=29.954218 tx=62 date='2026-11-01T22:19:19Z' progress=0.701357 cache=0.3MiB(61txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000157addbd00b245fddddf3dcf633d0e01c4da9dfc56825463960508e2d6 height=62 version=0x20000000 log2_work=29.977302 tx=63 date='2026-11-01T22:19:24Z' progress=0.709459 cache=0.3MiB(62txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000d6fee4c0f2f5a63f01d76ce5271e8839ae0e51fb3909c62db3b48efb94 height=63 version=0x20000000 log2_work=30.000022 tx=64 date='2026-11-01T22:19:25Z' progress=0.717489 cache=0.3MiB(63txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000006fc9e4ce744ec550b896d0b99d0ad8a38209cee0a43801f7a0fec4a932 height=64 version=0x20000000 log2_work=30.022390 tx=65 date='2026-11-01T22:19:28Z' progress=0.725446 cache=0.3MiB(64txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000ca3bc4fb37d17c725c79a5acdb4c350abf522e0af3aed93e7bb97d13f9 height=65 version=0x20000000 log2_work=30.044416 tx=66 date='2026-11-01T22:19:29Z' progress=0.733333 cache=0.3MiB(65txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000000e73d0e921dfce58b92d3cb4132cd9012d63687cb9eba4355f046142fa height=66 version=0x20000000 log2_work=30.066111 tx=67 date='2026-11-01T22:19:32Z' progress=0.741150 cache=0.3MiB(66txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000008652280d7aa316d1e03e0589dbec3ec60e5228e05689d5aa7efe37daa6 height=67 version=0x20000000 log2_work=30.087485 tx=68 date='2026-11-01T22:19:33Z' progress=0.748899 cache=0.3MiB(67txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000007620f72cd5f186cfddd9b3cc3e385b1bf6ca92b497f0b598618c1b6e18 height=68 version=0x20000000 log2_work=30.108546 tx=69 date='2026-11-01T22:19:37Z' progress=0.756579 cache=0.3MiB(68txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000ed960e48c6ca22f83bfca52f764deced168b20d2c203e5333a151f9ee7 height=69 version=0x20000000 log2_work=30.129305 tx=70 date='2026-11-01T22:19:52Z' progress=0.764192 cache=0.3MiB(69txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000067fcae829ea12655223e2f82c9a0912a0737f2492dffe82702074e3bb8 height=70 version=0x20000000 log2_work=30.149769 tx=71 date='2026-11-01T22:20:01Z' progress=0.771739 cache=0.3MiB(70txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000da3828184647df0b0fab7ea7c8d583f1ae8477e5e802120ca19b06ca65 height=71 version=0x20000000 log2_work=30.169947 tx=72 date='2026-11-01T22:20:03Z' progress=0.779221 cache=0.3MiB(71txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000000f353b630976a5d3597655ab44752d45a8316fcd5fb79a49c784644da9 height=72 version=0x20000000 log2_work=30.189847 tx=73 date='2026-11-01T22:20:03Z' progress=0.786638 cache=0.3MiB(72txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000ac176c1722404a36937cd2b9b47cb3c749bd4f7d5ad782c795673735ff height=73 version=0x20000000 log2_work=30.209475 tx=74 date='2026-11-01T22:20:12Z' progress=0.793991 cache=0.3MiB(73txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000014c8b9a7a4a631c6f9454ccab0f7d4ced941757cb239e85d872335f90e height=74 version=0x20000000 log2_work=30.228841 tx=75 date='2026-11-01T22:20:20Z' progress=0.801282 cache=0.3MiB(74txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000aa4f921f92876b86647e9a35a1e3a74258525affa5658acb979668d3e7 height=75 version=0x20000000 log2_work=30.247950 tx=76 date='2026-11-01T22:20:23Z' progress=0.808511 cache=0.3MiB(75txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000001f123afa50cb76983df82faf09bd84b12a5a973d855a398af48c641ae3 height=76 version=0x20000000 log2_work=30.266809 tx=77 date='2026-11-01T22:20:24Z' progress=0.815678 cache=0.3MiB(76txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000008b68f0c76bcf1330ff606195679c9d2d06429a536fd4d34b7011631cd7 height=77 version=0x20000000 log2_work=30.285424 tx=78 date='2026-11-01T22:20:25Z' progress=0.822785 cache=0.3MiB(77txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000d1a7fd3af45175649578c97175a7036c48c858de572f47d140cb6baa21 height=78 version=0x20000000 log2_work=30.303803 tx=79 date='2026-11-01T22:20:30Z' progress=0.829832 cache=0.3MiB(78txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f753859439358e3443d373fbc6f8731ce2be85df99746ad69c3411db04 height=79 version=0x20000000 log2_work=30.321950 tx=80 date='2026-11-01T22:20:30Z' progress=0.836820 cache=0.3MiB(79txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000c5329f8dec543c2bc590c1d6aa74c690484928fdf168f81577ad2e7237 height=80 version=0x20000000 log2_work=30.339872 tx=81 date='2026-11-01T22:20:33Z' progress=0.843750 cache=0.3MiB(80txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000050b0acf99a33034b9e568cf624c74ab4695dd27a03cdbf5b829d191ca3 height=81 version=0x20000000 log2_work=30.357574 tx=82 date='2026-11-01T22:20:35Z' progress=0.850622 cache=0.3MiB(81txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000fb9affc0f42e3a2c0e46eb386a3f01dc586d81116b098682d248e37e9a height=82 version=0x20000000 log2_work=30.375061 tx=83 date='2026-11-01T22:20:36Z' progress=0.857438 cache=0.3MiB(82txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000009aab6ded75882eda26288e27d7a343a1d165417c0dede6c245b0b4e1e6 height=83 version=0x20000000 log2_work=30.392339 tx=84 date='2026-11-01T22:20:37Z' progress=0.864198 cache=0.3MiB(83txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000006683029953f4cf5c819f9a36a8aeabc85e3c01dc8ad3e2e7d76ab9ad44 height=84 version=0x20000000 log2_work=30.409413 tx=85 date='2026-11-01T22:20:46Z' progress=0.870902 cache=0.3MiB(84txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000024a90f31f956cd13f9e79523763dd1a447dde16a94701cfde132973655 height=85 version=0x20000000 log2_work=30.426287 tx=86 date='2026-11-01T22:20:47Z' progress=0.877551 cache=0.3MiB(85txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000042413fe76a19fc86a23451ec928a6cc3e3abfbc01772841f57c239e7ef height=86 version=0x20000000 log2_work=30.442966 tx=87 date='2026-11-01T22:20:50Z' progress=0.884146 cache=0.3MiB(86txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000085e4b39dc37474a267f695930d8b50a7840798443f229e42a3ce49d1ba height=87 version=0x20000000 log2_work=30.459454 tx=88 date='2026-11-01T22:21:05Z' progress=0.890688 cache=0.3MiB(87txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000066ce66429918eaa9e3ce5a8fb0f66e6c7142aa652c591fe414973af8bd height=88 version=0x20000000 log2_work=30.475755 tx=89 date='2026-11-01T22:21:08Z' progress=0.897177 cache=0.3MiB(88txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000be10389f7be1adf92a3820e5a5bfc8ca43a9847e57a43c82c965aaaaa5 height=89 version=0x20000000 log2_work=30.491875 tx=90 date='2026-11-01T22:21:09Z' progress=0.903614 cache=0.3MiB(89txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000674db456fb3a24d2afff65817ca868f78b4876b41c8d4c53dfb963972c height=90 version=0x20000000 log2_work=30.507817 tx=91 date='2026-11-01T22:21:15Z' progress=0.910000 cache=0.3MiB(90txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000002d097f7ff5ad3b69930f9c17cf4f7d5c2710da96abd62fdf7aa5ff2172 height=91 version=0x20000000 log2_work=30.523584 tx=92 date='2026-11-01T22:21:17Z' progress=0.916335 cache=0.3MiB(91txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000007023b21739261b4bef88d3762b151cb7295635042af02881efe9e55e7e height=92 version=0x20000000 log2_work=30.539181 tx=93 date='2026-11-01T22:21:21Z' progress=0.922619 cache=0.3MiB(92txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000515f11bfddc6c72d15890122c532097c806ccc47c5bc5da866874e4442 height=93 version=0x20000000 log2_work=30.554611 tx=94 date='2026-11-01T22:21:26Z' progress=0.928854 cache=0.3MiB(93txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000008fe41f819d21e8220c2eb062e7e46ddc3c20968ff9ea2a5d5db8254157 height=94 version=0x20000000 log2_work=30.569878 tx=95 date='2026-11-01T22:21:32Z' progress=0.935039 cache=0.3MiB(94txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000089ba889c2692d4c8784a1e251bc156bbfbf1825fdf48878edefecc9952 height=95 version=0x20000000 log2_work=30.584985 tx=96 date='2026-11-01T22:21:35Z' progress=0.941176 cache=0.3MiB(95txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000e48482743d46568c37023f6cb879d0893ffc6b0f6256e798065758b93c height=96 version=0x20000000 log2_work=30.599935 tx=97 date='2026-11-01T22:21:36Z' progress=0.947266 cache=0.3MiB(96txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000ed3a82fb74bf04afa1dfce658c61d8b48c456e8cd8b044525a34d676c5 height=97 version=0x20000000 log2_work=30.614732 tx=98 date='2026-11-01T22:21:48Z' progress=0.953307 cache=0.3MiB(97txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f282c7623626c47340d6f8eb73ea13a42418c6757cea407e711b235a13 height=98 version=0x20000000 log2_work=30.629379 tx=99 date='2026-11-01T22:21:57Z' progress=0.959302 cache=0.3MiB(98txo)
+2026-11-01T22:26:08Z UpdateTip: new best=00000052add836749ac23d3eeaa72c940848d7acf57685e3063667b420a06110 height=99 version=0x20000000 log2_work=30.643878 tx=100 date='2026-11-01T22:22:03Z' progress=0.965251 cache=0.3MiB(99txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f20adac3fcb20340376b860545603706e29ff397dc50a948e43b65aa32 height=100 version=0x20000000 log2_work=30.658233 tx=101 date='2026-11-01T22:22:06Z' progress=0.971154 cache=0.3MiB(100txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000a062bc524ee27182eacdabd525fa5a40ea8a6b4f6c899d5b8b3c965dae height=101 version=0x20000000 log2_work=30.672447 tx=102 date='2026-11-01T22:22:08Z' progress=0.977011 cache=0.3MiB(101txo)
+2026-11-01T22:26:08Z UpdateTip: new best=000000f2887ce678d3dad508d6fd5f70632d43c2df034291efa35b42ea150a85 height=102 version=0x20000000 log2_work=30.686523 tx=103 date='2026-11-01T22:22:13Z' progress=0.982824 cache=0.3MiB(102txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000006ee65ce22d8114450a053587364d722289d0c9c5ea4edd9c7abedb53db height=103 version=0x20000000 log2_work=30.700462 tx=104 date='2026-11-01T22:22:14Z' progress=0.988593 cache=0.3MiB(103txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000002434d24278ffdb69fe8c0b0d9133acc81d004e755565f3da1542c48be6 height=104 version=0x20000000 log2_work=30.714268 tx=105 date='2026-11-01T22:22:34Z' progress=0.994318 cache=0.3MiB(104txo)
+2026-11-01T22:26:08Z UpdateTip: new best=0000003cf8c1b12fa770f8c42c452669f2ad162965220302fb387b6af6f66c54 height=105 version=0x20000000 log2_work=30.727942 tx=106 date='2026-11-01T22:22:35Z' progress=1.000000 cache=0.3MiB(105txo)
+2026-11-01T22:26:11Z New manual peer connected: transport: v2, version: 70017, peer=2
+2026-11-01T22:26:29Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:26:29Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:26:29Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:26:49Z init message: Creating wallet…
+2026-11-01T22:26:49Z [wc] Qcoin: derived mldsa44 keypair at HD index 0 (pk=1312 bytes) pk_hash=8f8c7e5ff06f1e52; stored in wallet database for descriptor 6a32cdd5ebc0114b
+2026-11-01T22:26:49Z [wc] Qcoin: imported wpq() descriptor for mldsa44 key 8f8c7e5ff06f1e52 (label "mldsa")
+2026-11-01T22:26:49Z [wc] Setting spkMan to active: id = bb5c116b083f402b516bf93d39408f50cdffea862d38562127ba71efce2cbfb9, type = legacy, internal = false
+2026-11-01T22:26:49Z [wc] Setting spkMan to active: id = 7fb09938111881fe80fd8284813f1fa4701361a5a7bf98e4a49236fafd391c49, type = p2sh-segwit, internal = false
+2026-11-01T22:26:49Z [wc] Setting spkMan to active: id = 8a240bb40d1a617eca8bed2ca0338badbec6f31a3ab68f6842f649c0157f6ff7, type = bech32, internal = false
+2026-11-01T22:26:49Z [wc] Setting spkMan to active: id = 60e18e4dbe5aeab80262971e98407c07196ec3020b1cf72b0312340d0be21aab, type = bech32m, internal = false
+2026-11-01T22:26:49Z [wc] Setting spkMan to active: id = aab3519aec23c33a344d2353ac7ebc62a0a67ba707f8cad01156944e75a4bf92, type = legacy, internal = true
+2026-11-01T22:26:49Z [wc] Setting spkMan to active: id = 1565cfa9cf1ec65b73fba03b0211436047366e3420a54cb6484bc5bc97d1d316, type = p2sh-segwit, internal = true
+2026-11-01T22:26:49Z [wc] Setting spkMan to active: id = 6164f187c76004f50362dccdea6ec1405a9a3af70fd76f42811e692c6fda310f, type = bech32, internal = true
+2026-11-01T22:26:50Z [wc] Setting spkMan to active: id = 758d4d3691a6a2d141fc66d5ab0c962c9dbbcf8c8a4014b2aa31696e25520df7, type = bech32m, internal = true
+2026-11-01T22:26:50Z [wc] Wallet completed creation in             612ms
+2026-11-01T22:26:50Z [wc] setKeyPool.size() = 8000
+2026-11-01T22:26:50Z [wc] mapWallet.size() = 0
+2026-11-01T22:26:50Z [wc] m_address_book.size() = 1
+2026-11-01T22:26:53Z [wc] Qcoin: derived mldsa44 keypair at HD index 1 (pk=1312 bytes) pk_hash=0c72b60743f7a6a8; stored in wallet database for descriptor 1132cb40b796757b
+2026-11-01T22:26:53Z [wc] Qcoin: imported wpq() descriptor for mldsa44 key 0c72b60743f7a6a8 (label "rx")
+2026-11-01T22:27:08Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:27:08Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:27:08Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:27:12Z Saw new cmpctblock header hash=000000e474b93ee9ab0161eba55c76c60dcb8922259eef0134e1eff494c95443 height=106 peer=0
+2026-11-01T22:27:12Z UpdateTip: new best=000000e474b93ee9ab0161eba55c76c60dcb8922259eef0134e1eff494c95443 height=106 version=0x20000000 log2_work=30.741489 tx=108 date='2026-11-01T22:27:12Z' progress=1.000000 cache=0.3MiB(108txo)
+2026-11-01T22:27:37Z [wc] MarkUnusedAddresses: Detected a used keypool item at index 0, mark all keypool items up to this item as used
+2026-11-01T22:27:37Z [wc] AddToWallet 66e330c6f12cc5dd8a5ef42ae7c7b6910a13866ed4a29fc3b2a8f4b7a6f00cc5 new InMempool
+2026-11-01T22:27:40Z UpdateTip: new best=000000f0d23286a3d877f75547034933a4c79a02416ea368a33a101d4e9ec186 height=107 version=0x20000000 log2_work=30.754910 tx=110 date='2026-11-01T22:27:38Z' progress=1.000000 cache=0.3MiB(110txo)
+2026-11-01T22:27:40Z [wc] AddToWallet ed3ff81f687a4d575861870a670ab141a19fe2fcbc4af0045aad6e4eb847164c new Confirmed (block=000000f0d23286a3d877f75547034933a4c79a02416ea368a33a101d4e9ec186, height=107, index=0)
+2026-11-01T22:27:40Z [wc] AddToWallet 66e330c6f12cc5dd8a5ef42ae7c7b6910a13866ed4a29fc3b2a8f4b7a6f00cc5 update Confirmed (block=000000f0d23286a3d877f75547034933a4c79a02416ea368a33a101d4e9ec186, height=107, index=1)
+2026-11-01T22:28:06Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:28:06Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:28:06Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:28:37Z Saw new cmpctblock header hash=000000b863297ecd47a81507d7b0068df0a91b9714c444be04ac1e2f6104196f height=108 peer=0
+2026-11-01T22:28:37Z UpdateTip: new best=000000b863297ecd47a81507d7b0068df0a91b9714c444be04ac1e2f6104196f height=108 version=0x20000000 log2_work=30.768206 tx=112 date='2026-11-01T22:28:35Z' progress=1.000000 cache=0.3MiB(112txo)
+2026-11-01T22:29:04Z Saw new cmpctblock header hash=000000d141f9e80b3b34ac94dfb7ae00c1984d30440995b06d4d7ae776ab64fb height=109 peer=0
+2026-11-01T22:29:04Z UpdateTip: new best=000000d141f9e80b3b34ac94dfb7ae00c1984d30440995b06d4d7ae776ab64fb height=109 version=0x20000000 log2_work=30.781382 tx=114 date='2026-11-01T22:29:04Z' progress=1.000000 cache=0.3MiB(113txo)
+2026-11-01T22:29:32Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:29:32Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:29:32Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:29:33Z [wc] Qcoin: derived mldsa44 keypair at HD index 2 (pk=1312 bytes) pk_hash=ee523e74d0b0de0c; stored in wallet database for descriptor 5cf7e1f2821a1a3a
+2026-11-01T22:29:33Z [wc] Qcoin: imported wpq() descriptor for mldsa44 key ee523e74d0b0de0c (label "ds")
+2026-11-01T22:29:55Z [wc] MarkUnusedAddresses: Detected a used keypool item at index 0, mark all keypool items up to this item as used
+2026-11-01T22:29:55Z [wc] AddToWallet d98055e32461ac77f274d1f0acd84f6235adb8bc411a9e39e3b0d8558c0f6191 new InMempool
+2026-11-01T22:30:13Z Saw new cmpctblock header hash=0000005a12586809321f120fef767620b8e3b7e100725dcb7834bdac28f977fc height=110 peer=0
+2026-11-01T22:30:13Z UpdateTip: new best=0000005a12586809321f120fef767620b8e3b7e100725dcb7834bdac28f977fc height=110 version=0x20000000 log2_work=30.794438 tx=116 date='2026-11-01T22:30:12Z' progress=1.000000 cache=0.3MiB(115txo)
+2026-11-01T22:30:13Z txindex is catching up on block notifications
+2026-11-01T22:30:13Z [wc] AddToWallet d98055e32461ac77f274d1f0acd84f6235adb8bc411a9e39e3b0d8558c0f6191 no-change Inactive (abandoned=0)
+2026-11-01T22:30:13Z [wc] Transaction ddc9414b9ceea64aeb089e527abc7e95ea829928360cd000d476093a9c58d47f (in block 0000005a12586809321f120fef767620b8e3b7e100725dcb7834bdac28f977fc) conflicts with wallet transaction d98055e32461ac77f274d1f0acd84f6235adb8bc411a9e39e3b0d8558c0f6191 (both spend fcd8d0bc12ac9b67fe60b0686eb5113e8483545db817935d601c90d41e25cea2:0)
+2026-11-01T22:31:34Z [wc] AddToWallet 011a89c0cc5c617284d6554c1f079f7d5c4a3c82ccfc0d6f20f0d30ef694a13a new InMempool
+2026-11-01T22:31:42Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:31:42Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:31:42Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:31:53Z UpdateTip: new best=0000006e58c20e1da9afbb61631f1fc65b0131691d9aab3f4202fddac7b0b218 height=111 version=0x20000000 log2_work=30.807377 tx=118 date='2026-11-01T22:31:52Z' progress=1.000000 cache=0.3MiB(117txo)
+2026-11-01T22:31:53Z [wc] AddToWallet 7f6c5e9ee3e0e6e29a3ef9737d3bab1b0df95f4133e7d6549b5324e02165e789 new Confirmed (block=0000006e58c20e1da9afbb61631f1fc65b0131691d9aab3f4202fddac7b0b218, height=111, index=0)
+2026-11-01T22:31:53Z [wc] AddToWallet 011a89c0cc5c617284d6554c1f079f7d5c4a3c82ccfc0d6f20f0d30ef694a13a update Confirmed (block=0000006e58c20e1da9afbb61631f1fc65b0131691d9aab3f4202fddac7b0b218, height=111, index=1)
+2026-11-01T22:32:20Z Saw new cmpctblock header hash=00000084cca4452e7839be256f91b3f926e6abc5fb7bf2c7fd0dcdd6e77d3e8b height=112 peer=0
+2026-11-01T22:32:20Z UpdateTip: new best=00000084cca4452e7839be256f91b3f926e6abc5fb7bf2c7fd0dcdd6e77d3e8b height=112 version=0x20000000 log2_work=30.820201 tx=119 date='2026-11-01T22:32:20Z' progress=1.000000 cache=0.3MiB(118txo)
+2026-11-01T22:34:08Z [wc] Qcoin: derived mldsa44 keypair at HD index 3 (pk=1312 bytes) pk_hash=8aa37231d17794e6; stored in wallet database for descriptor bc9644a73f6f4085
+2026-11-01T22:34:08Z [wc] Qcoin: imported wpq() descriptor for mldsa44 key 8aa37231d17794e6 (label "ds")
+2026-11-01T22:34:34Z [wc] MarkUnusedAddresses: Detected a used keypool item at index 0, mark all keypool items up to this item as used
+2026-11-01T22:34:34Z [wc] AddToWallet 45b86018c516c5473797c076ec5ddb25782cd30e335f0a721236adfcf141f9a8 new InMempool
+2026-11-01T22:34:56Z connect() to 127.0.0.1:9051 failed after wait: Connection refused (111)
+2026-11-01T22:34:56Z [warning] tor: Error connecting to address 127.0.0.1:9051
+2026-11-01T22:34:56Z [warning] tor: Initiating connection to Tor control port 127.0.0.1:9051 failed
+2026-11-01T22:34:57Z Saw new cmpctblock header hash=000000541f4cb329cc26fb9f145e4217eb1a5c6952f1f41ebd16f65196d314b1 height=113 peer=0
+2026-11-01T22:34:57Z UpdateTip: new best=000000541f4cb329cc26fb9f145e4217eb1a5c6952f1f41ebd16f65196d314b1 height=113 version=0x20000000 log2_work=30.832912 tx=121 date='2026-11-01T22:34:55Z' progress=1.000000 cache=0.3MiB(120txo)
+2026-11-01T22:34:57Z [wc] AddToWallet 45b86018c516c5473797c076ec5ddb25782cd30e335f0a721236adfcf141f9a8 update Confirmed (block=000000541f4cb329cc26fb9f145e4217eb1a5c6952f1f41ebd16f65196d314b1, height=113, index=1)
+2026-11-01T22:34:57Z Saw new cmpctblock header hash=000000bf98a307e3359405f70a1f20f42a1180f2b0746f8f5ec371e59ab43765 height=114 peer=0
+2026-11-01T22:34:57Z UpdateTip: new best=000000bf98a307e3359405f70a1f20f42a1180f2b0746f8f5ec371e59ab43765 height=114 version=0x20000000 log2_work=30.845512 tx=122 date='2026-11-01T22:34:57Z' progress=1.000000 cache=0.3MiB(121txo)
+2026-11-01T22:34:57Z txindex is catching up on block notifications
+2026-11-01T22:35:23Z New manual peer connected: transport: v2, version: 70017, peer=6
+2026-11-01T22:36:19Z Saw new cmpctblock header hash=000000364a45d2aa809a7bc45303f92944f2723e7b58fb2f5d938cd8245be3ee height=115 peer=0
+2026-11-01T22:36:19Z UpdateTip: new best=000000364a45d2aa809a7bc45303f92944f2723e7b58fb2f5d938cd8245be3ee height=115 version=0x20000000 log2_work=30.858003 tx=124 date='2026-11-01T22:36:14Z' progress=1.000000 cache=0.3MiB(172txo)
+2026-11-01T22:36:59Z Saw new cmpctblock header hash=000000835bd054c2b08d953d63b283c7e6f75fa1f42b8ec2d533bb568f7b9549 height=116 peer=0
+2026-11-01T22:36:59Z UpdateTip: new best=000000835bd054c2b08d953d63b283c7e6f75fa1f42b8ec2d533bb568f7b9549 height=116 version=0x20000000 log2_work=30.870387 tx=175 date='2026-11-01T22:36:56Z' progress=1.000000 cache=0.3MiB(173txo)

@@ -1,0 +1,13 @@
+{
+  "totalbytesrecv": 773709,
+  "totalbytessent": 533873,
+  "timemillis": 1793572662212,
+  "uploadtarget": {
+    "timeframe": 86400,
+    "target": 0,
+    "target_reached": false,
+    "serve_historical_blocks": true,
+    "bytes_left_in_cycle": 0,
+    "time_left_in_cycle": 0
+  }
+}

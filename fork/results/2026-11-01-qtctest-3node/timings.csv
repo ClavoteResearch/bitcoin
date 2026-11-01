@@ -1,0 +1,55 @@
+test,metric,value,unit,note
+initial_sync,A_to_B_105_blocks,1.231,s,from A addnode call to B at height 105
+initial_sync,A_to_C_105_blocks,1.987,s,from A addnode call to C at height 105
+p2p_send_A_to_B,broadcast_call_on_A,0.041,s,sendrawtransaction on A
+p2p_send_A_to_B,relay_A_to_B,4.932,s,first seen in B mempool
+p2p_send_A_to_B,relay_A_to_C,4.479,s,first seen in C mempool
+p2p_send_A_to_B,mining_call_on_A,0.210,s,one generatetoaddress call
+p2p_send_A_to_B,block_A_to_B,0.073,s,block found on A to confirmed on B
+p2p_send_A_to_B,block_A_to_C,0.091,s,
+p2p_send_A_to_B,broadcast_to_first_confirmation_B,6.513,s,includes a deliberate 5 s gap before mining
+p2p_send_A_to_B,broadcast_to_first_confirmation_C,6.531,s,
+p2p_send_B_to_C,broadcast_call_on_B,0.031,s,
+p2p_send_B_to_C,relay_B_to_A,5.248,s,
+p2p_send_B_to_C,relay_B_to_C,5.080,s,
+p2p_send_B_to_C,mining_call_on_C,1.706,s,block mined on C
+p2p_send_B_to_C,block_C_to_A,0.281,s,
+p2p_send_B_to_C,broadcast_to_first_confirmation_A,8.576,s,includes a deliberate 5 s gap before mining
+p2p_send_B_to_C,broadcast_to_first_confirmation_C,8.366,s,
+script_path,broadcast_call_on_A,0.042,s,includes full script validation
+script_path,relay_A_to_B,3.463,s,
+script_path,relay_A_to_C,4.122,s,
+script_path,block_A_to_B,0.082,s,
+script_path,block_A_to_C,0.074,s,
+script_path,broadcast_to_first_confirmation_B,6.468,s,
+script_path,broadcast_to_first_confirmation_C,6.459,s,
+script_path,vsize,1048,vbytes,one input one output
+script_path,weight,4189,WU,
+script_path,witness_element_sizes,36/34/3735,bytes,leaf / control block / attestation
+double_spend_round1,submission_gap,0.106,s,C minus B; the earlier submission (to B) won
+double_spend_round1,first_submission_to_winner_confirmed_B,18.472,s,includes a 10 s settle wait and a manual 1.06 s block
+double_spend_round1,first_submission_to_winner_confirmed_C,18.508,s,
+double_spend_round2,submission_gap,0.206,s,
+double_spend_round2,block_found_gap_C_before_B,0.712,s,C block found first; no lasting fork
+double_spend_round2,tip_change_B_after_tiebreak_block,0.032,s,
+double_spend_round2,tip_change_C_after_tiebreak_block,0.062,s,
+double_spend_partition,reorg_time_B_after_reconnect,1.521,s,B 1-block branch replaced by 2-block chain; includes manual addnode calls and handshake
+burst_50,A_acceptance_window,1.183,s,50 sendrawtransaction calls over 8 parallel callers
+burst_50,A_acceptance_rate,42.3,tx/s,
+burst_50,A_call_median,0.187,s,
+burst_50,A_call_max,0.195,s,
+burst_50,B_mempool_reached_1,3.448,s,relative to first broadcast
+burst_50,B_mempool_reached_25,3.562,s,
+burst_50,B_mempool_reached_50,3.611,s,
+burst_50,C_mempool_reached_1,3.346,s,
+burst_50,C_mempool_reached_25,3.563,s,
+burst_50,C_mempool_reached_50,3.675,s,
+burst_50,mining_call_on_A,3.483,s,started at +12.492 s
+burst_50,height_reached_A,15.985,s,
+burst_50,height_reached_B,16.005,s,
+burst_50,height_reached_C,16.030,s,
+burst_50,block_transactions,51,count,50 spends plus coinbase
+burst_50,block_size,192010,bytes,
+burst_50,block_weight,206782,WU,
+burst_50,per_spend_weight_estimate,4117,WU,(206782 minus about 932 coinbase) / 50
+burst_50,spends_per_full_block_estimate,970,count,4000000 / 4117 (policy and consensus limits not retested)

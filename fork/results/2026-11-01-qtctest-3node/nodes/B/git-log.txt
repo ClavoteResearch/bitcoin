@@ -1,0 +1,1 @@
+27ff8a7 consensus: witness v2 script path with OP_CHECKMLDSAVERIFY

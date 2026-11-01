@@ -1,0 +1,30 @@
+== t1: peer-to-peer send ==
+clock A: ahead of NTP by 0.001687 s
+clock B: ahead of NTP by 0.002173 s
+clock C: ahead of NTP by -0.001515 s
+addresses: A=tq1zts2xkg7yg6msjul3x7te5f0nr8nz4stfxgnm2sghnrv6d3vcu28q3k5rd8 B=tq1z38wrdu73ydgu85s0ckmv8s298589aj0pkysrj2fau45lyynv8zaqtyrvk0 C=tq1z84yxfr0fjkyfqvdd9qxfwm4cnzwhm0g52qzu7n4yvlenga2m7vhsn5ap48
+heights: A=105 B=105 C=105
+leg1 txid=65fd807e2e4b1a3c0b908c0ffda3c730bec00775377e386bc331c7b29760df78
+leg1 broadcast on A: bcast_start=1793572026.355393852 bcast_end=1793572026.395949864 rc=0 result=65fd807e2e4b1a3c0b908c0ffda3c730bec00775377e386bc331c7b29760df78
+leg1 block mined on A: mine_start=1793572032.585076739 mine_end=1793572032.795562257 hash=000000e474b93ee9ab0161eba55c76c60dcb8922259eef0134e1eff494c95443 height=106
+leg1 timings (NTP-corrected, seconds):
+  A: broadcast call took 0.041
+  relay A->B (tx first seen in B mempool): 4.932
+  relay A->C (tx first seen in C mempool): 4.479
+  mining on A (one generatetoaddress call): 0.210
+  block A->B (block found on A to confirmed on B): 0.073
+  block A->C: 0.091
+  broadcast -> 1 confirmation at B: 6.513   at C: 6.531   (a 5 s relay gap was left before mining on purpose)
+  B balance now: {"mine":{"trusted":5.00000000,"untrusted_pending":0.00000000,"immature":0.00000000,"nonmempool":0.00000000},"lastprocessedblock":{"hash":"000000e474b93ee9ab0161eba55c76c60dcb8922259eef0134e1eff494c95443","height":106}}
+leg2 txid=66e330c6f12cc5dd8a5ef42ae7c7b6910a13866ed4a29fc3b2a8f4b7a6f00cc5
+leg2 broadcast on B: bcast_start=1793572052.218515487 bcast_end=1793572052.249839201 rc=0 result=66e330c6f12cc5dd8a5ef42ae7c7b6910a13866ed4a29fc3b2a8f4b7a6f00cc5
+leg2 block mined on C: mine_start=1793572058.807593261 mine_end=1793572060.513719558 hash=000000f0d23286a3d877f75547034933a4c79a02416ea368a33a101d4e9ec186 height=107
+leg2 timings (NTP-corrected, seconds):
+  B: broadcast call took 0.031
+  relay B->A: 5.248    relay B->C: 5.080
+  mining on C (one call): 1.706
+  block C->A: 0.281
+  broadcast -> 1 confirmation at A: 8.576   at C: 8.366
+  C balance now: {"mine":{"trusted":2.00000000,"untrusted_pending":0.00000000,"immature":50.00010730,"nonmempool":0.00000000},"lastprocessedblock":{"hash":"000000f0d23286a3d877f75547034933a4c79a02416ea368a33a101d4e9ec186","height":107}}
+heights after: A=107 B=107 C=107
+tips: A=000000f0d23286a3 B=000000f0d23286a3 C=000000f0d23286a3

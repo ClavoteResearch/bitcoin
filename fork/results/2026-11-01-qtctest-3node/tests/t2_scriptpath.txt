@@ -1,0 +1,32 @@
+== t2: script-path spend on the network ==
+clock A: ahead of NTP by 0.001998 s
+clock B: ahead of NTP by 0.000184 s
+clock C: ahead of NTP by -0.002305 s
+spk=52203ac0540f495eb83b97256a9fe92a5719517e4690e0648e4bb02737b2d7072517
+leaf=2071776154d343462cb849b036558158fe2940c2d6802a48fa9577829825248f1200b351
+control=c001671b249c63ceb0573df55ca97d9e2b66eb74c51c6aad2539030d54262460b6b0
+leaf_pk_hash=71776154d343462cb849b036558158fe2940c2d6802a48fa9577829825248f12
+q=3ac0540f495eb83b97256a9fe92a5719517e4690e0648e4bb02737b2d7072517
+address=tq1z8tq9gr6ft6urh9e9d207j2jhr9ghu35supjgujasyumm94c8y5ts3hcr8n
+script-path address: tq1z8tq9gr6ft6urh9e9d207j2jhr9ghu35supjgujasyumm94c8y5ts3hcr8n
+funding txid=673602ef98576ad966f84e22a7286f0912aa929aab1cdd4a464142f9c320addf
+funding broadcast: bcast_start=1793572110.654658934 bcast_end=1793572110.697700039 rc=0 result=673602ef98576ad966f84e22a7286f0912aa929aab1cdd4a464142f9c320addf
+funding block: mine_start=1793572115.976891564 mine_end=1793572117.476953098 hash=000000b863297ecd47a81507d7b0068df0a91b9714c444be04ac1e2f6104196f height=108
+funding confirmed on: A=1 B=1 C=1 confirmations
+bad-signature spend built: 8e8b36da8379cce347aea3432543c9522ae09a966a6952368f0d62580f65fe6e (tool: local verify: FAILED (Invalid ML-DSA signature) )
+bad spend submitted to B -> rc=26 result=error code: -26
+error message:
+mempool-script-verify-flag-failed (Invalid ML-DSA signature), input 0 of 8e8b36da8379cce347aea3432543c9522ae09a966a6952368f0d62580f65fe6e (wtxid 73443c865dc44724cd2c6d002c5bffbea2979739e2a3c748f4caaaa4860d3c67), spending 673602ef98576ad966f84e22a7286f0912aa929aab1cdd4a464142f9c320addf:1
+bad spend submitted to C -> rc=26 result=error code: -26
+error message:
+mempool-script-verify-flag-failed (Invalid ML-DSA signature), input 0 of 8e8b36da8379cce347aea3432543c9522ae09a966a6952368f0d62580f65fe6e (wtxid 73443c865dc44724cd2c6d002c5bffbea2979739e2a3c748f4caaaa4860d3c67), spending 673602ef98576ad966f84e22a7286f0912aa929aab1cdd4a464142f9c320addf:1
+script-path spend built: 8e8b36da8379cce347aea3432543c9522ae09a966a6952368f0d62580f65fe6e (tool: local verify: ok (No error)  vout=1 sats=1000000000 send=999900000 )
+spend broadcast on A: bcast_start=1793572138.573320749 bcast_end=1793572138.615660542 rc=0 result=8e8b36da8379cce347aea3432543c9522ae09a966a6952368f0d62580f65fe6e
+spend block mined on A: mine_start=1793572144.870569543 mine_end=1793572144.958708174 hash=000000d141f9e80b3b34ac94dfb7ae00c1984d30440995b06d4d7ae776ab64fb height=109
+script-path timings (NTP-corrected, seconds):
+  A: broadcast call (includes full script validation) took 0.042
+  relay A->B: 3.463    relay A->C: 4.122
+  block A->B: 0.082    block A->C: 0.074
+  broadcast -> 1 confirmation at B: 6.468   at C: 6.459
+  confirmations of the script-path spend: A=1 B=1 C=1
+  on B: vsize=1048 weight=4189 witness elements=3 sizes(bytes)=[36, 34, 3735] first-byte-of-last=510101

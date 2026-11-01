@@ -1,0 +1,5 @@
+27ff8a7d consensus: witness v2 script path with OP_CHECKMLDSAVERIFY
+3a8c9c5a doc: record the value rule for the white paper; Qcoin is a separate coin
+d8afb830 consensus: value rule - only witness v2 ML-DSA outputs may carry value (separate coin)
+a35b4cba consensus: reject non-canonical ML-DSA signature encodings in witness v2
+9f7b45d1 consensus: revert legacy ECDSA-path routing (13d6b525); witness v2 is now a soft fork

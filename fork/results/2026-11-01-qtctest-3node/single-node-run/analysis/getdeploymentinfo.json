@@ -1,0 +1,46 @@
+{
+  "hash": "0000002a44277b9459f04e3225b685a2e060dfd03984ccdd8f6cc5fb522de072",
+  "height": 10,
+  "script_flags": [
+    "CHECKLOCKTIMEVERIFY",
+    "CHECKSEQUENCEVERIFY",
+    "DERSIG",
+    "MLDSA_V2",
+    "NULLDUMMY",
+    "P2SH",
+    "TAPROOT",
+    "WITNESS"
+  ],
+  "deployments": {
+    "bip34": {
+      "type": "buried",
+      "active": true,
+      "height": 1
+    },
+    "bip66": {
+      "type": "buried",
+      "active": true,
+      "height": 1
+    },
+    "bip65": {
+      "type": "buried",
+      "active": true,
+      "height": 1
+    },
+    "csv": {
+      "type": "buried",
+      "active": true,
+      "height": 1
+    },
+    "segwit": {
+      "type": "buried",
+      "active": true,
+      "height": 0
+    },
+    "mldsav2": {
+      "type": "buried",
+      "active": true,
+      "height": 0
+    }
+  }
+}

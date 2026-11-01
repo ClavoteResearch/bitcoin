@@ -1,0 +1,17 @@
+{
+  "loaded": true,
+  "size": 0,
+  "bytes": 0,
+  "usage": 0,
+  "total_fee": 0.00000000,
+  "maxmempool": 300000000,
+  "mempoolminfee": 0.00000100,
+  "minrelaytxfee": 0.00000100,
+  "incrementalrelayfee": 0.00000100,
+  "unbroadcastcount": 0,
+  "permitbaremultisig": true,
+  "maxdatacarriersize": 100000,
+  "limitclustercount": 64,
+  "limitclustersize": 101000,
+  "optimal": true
+}
