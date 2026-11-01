@@ -1,0 +1,72 @@
+# Single-thread signature microbenchmark (microbench.c)
+# cpu: AMD Ryzen 7 5800H with Radeon Graphics   date: 2026-11-01
+# ML-DSA-44 from liboqs 0.14.0 (ctx BIP-MLDSAv2, 65-byte message); ECDSA and Schnorr from this tree's libsecp256k1
+# build: gcc -O2 microbench.c -I<liboqs include> -I<secp256k1 include> libsecp256k1.a -loqs
+ML-DSA-44 keygen       55.0 us/op
+ML-DSA-44 sign         91.9 us/op  (sig 2420 B, pk 1312 B)
+ML-DSA-44 verify       34.3 us/op  (ok=5000/5000)
+ECDSA sign             26.2 us/op  (sig 64 B compact, pk 33 B)
+ECDSA verify           34.3 us/op  (ok=10000/10000)
+Schnorr sign           19.1 us/op  (sig 64 B, pk 32 B)
+Schnorr verify         32.7 us/op  (ok=10000/10000)
+verify ratio: ML-DSA-44 / ECDSA = 1.00, ML-DSA-44 / Schnorr = 1.05
+
+# Eight further runs on the same machine (it was shared with other work, so single runs vary by up to 30%).
+# The first run of this session gave ML-DSA-44 verify 33.7 us against ECDSA 43.9 and Schnorr 42.2; the run above gave 34.3, 34.3 and 32.7.
+# Summary of the eight runs:
+# ML-DSA-44 sign     min   70.6  median   75.8  max   90.1 us/op  over 8 runs
+# ML-DSA-44 verify   min   26.4  median   27.2  max   30.4 us/op  over 8 runs
+# ECDSA sign         min   23.2  median   24.9  max   33.5 us/op  over 8 runs
+# ECDSA verify       min   34.5  median   35.1  max   40.1 us/op  over 8 runs
+# Schnorr sign       min   17.7  median   19.8  max   22.8 us/op  over 8 runs
+# Schnorr verify     min   33.3  median   35.8  max   36.6 us/op  over 8 runs
+#
+# Raw runs:
+# run 1: ML-DSA-44 sign         79.0 us/op  (sig 2420 B, pk 1312 B)
+# run 1: ML-DSA-44 verify       26.7 us/op  (ok=5000/5000)
+# run 1: ECDSA sign             23.8 us/op  (sig 64 B compact, pk 33 B)
+# run 1: ECDSA verify           34.5 us/op  (ok=10000/10000)
+# run 1: Schnorr sign           20.3 us/op  (sig 64 B, pk 32 B)
+# run 1: Schnorr verify         35.5 us/op  (ok=10000/10000)
+# run 2: ML-DSA-44 sign         75.1 us/op  (sig 2420 B, pk 1312 B)
+# run 2: ML-DSA-44 verify       27.5 us/op  (ok=5000/5000)
+# run 2: ECDSA sign             33.5 us/op  (sig 64 B compact, pk 33 B)
+# run 2: ECDSA verify           36.6 us/op  (ok=10000/10000)
+# run 2: Schnorr sign           22.8 us/op  (sig 64 B, pk 32 B)
+# run 2: Schnorr verify         33.3 us/op  (ok=10000/10000)
+# run 3: ML-DSA-44 sign         82.0 us/op  (sig 2420 B, pk 1312 B)
+# run 3: ML-DSA-44 verify       28.7 us/op  (ok=5000/5000)
+# run 3: ECDSA sign             24.3 us/op  (sig 64 B compact, pk 33 B)
+# run 3: ECDSA verify           34.6 us/op  (ok=10000/10000)
+# run 3: Schnorr sign           18.7 us/op  (sig 64 B, pk 32 B)
+# run 3: Schnorr verify         35.8 us/op  (ok=10000/10000)
+# run 4: ML-DSA-44 sign         76.6 us/op  (sig 2420 B, pk 1312 B)
+# run 4: ML-DSA-44 verify       27.0 us/op  (ok=5000/5000)
+# run 4: ECDSA sign             25.9 us/op  (sig 64 B compact, pk 33 B)
+# run 4: ECDSA verify           35.4 us/op  (ok=10000/10000)
+# run 4: Schnorr sign           17.7 us/op  (sig 64 B, pk 32 B)
+# run 4: Schnorr verify         36.0 us/op  (ok=10000/10000)
+# run 5: ML-DSA-44 sign         70.6 us/op  (sig 2420 B, pk 1312 B)
+# run 5: ML-DSA-44 verify       30.4 us/op  (ok=5000/5000)
+# run 5: ECDSA sign             23.2 us/op  (sig 64 B compact, pk 33 B)
+# run 5: ECDSA verify           34.8 us/op  (ok=10000/10000)
+# run 5: Schnorr sign           19.3 us/op  (sig 64 B, pk 32 B)
+# run 5: Schnorr verify         36.6 us/op  (ok=10000/10000)
+# run 6: ML-DSA-44 sign         75.1 us/op  (sig 2420 B, pk 1312 B)
+# run 6: ML-DSA-44 verify       26.5 us/op  (ok=5000/5000)
+# run 6: ECDSA sign             24.2 us/op  (sig 64 B compact, pk 33 B)
+# run 6: ECDSA verify           37.6 us/op  (ok=10000/10000)
+# run 6: Schnorr sign           17.7 us/op  (sig 64 B, pk 32 B)
+# run 6: Schnorr verify         36.4 us/op  (ok=10000/10000)
+# run 7: ML-DSA-44 sign         71.0 us/op  (sig 2420 B, pk 1312 B)
+# run 7: ML-DSA-44 verify       30.1 us/op  (ok=5000/5000)
+# run 7: ECDSA sign             29.6 us/op  (sig 64 B compact, pk 33 B)
+# run 7: ECDSA verify           34.8 us/op  (ok=10000/10000)
+# run 7: Schnorr sign           21.8 us/op  (sig 64 B, pk 32 B)
+# run 7: Schnorr verify         33.9 us/op  (ok=10000/10000)
+# run 8: ML-DSA-44 sign         90.1 us/op  (sig 2420 B, pk 1312 B)
+# run 8: ML-DSA-44 verify       26.4 us/op  (ok=5000/5000)
+# run 8: ECDSA sign             25.5 us/op  (sig 64 B compact, pk 33 B)
+# run 8: ECDSA verify           40.1 us/op  (ok=10000/10000)
+# run 8: Schnorr sign           21.9 us/op  (sig 64 B, pk 32 B)
+# run 8: Schnorr verify         35.7 us/op  (ok=10000/10000)

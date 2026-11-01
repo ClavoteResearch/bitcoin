@@ -907,7 +907,14 @@ static RPCMethod getblocktemplate()
         // a delay to each getblocktemplate call. This differs from typical
         // long-lived IPC usage, where the overhead is paid only when creating
         // the initial template.
-        block_template = block_template_manager.CreateNewTemplate({});
+        // Qcoin: on chains with the value rule, the default OP_TRUE placeholder coinbase fails TestBlockValidity
+        // (bad-txns-output-not-mldsa). External miners build their own coinbase from coinbasevalue and
+        // default_witness_commitment, so any valid witness v2 output works as the placeholder.
+        node::BlockCreateOptions create_options{};
+        if (consensusParams.fMlDsaOnlyValue) {
+            create_options.coinbase_output_script = CScript() << OP_2 << std::vector<unsigned char>(32, 0);
+        }
+        block_template = block_template_manager.CreateNewTemplate(create_options);
         CHECK_NONFATAL(block_template);
 
 
