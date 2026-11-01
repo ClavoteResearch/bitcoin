@@ -25,6 +25,16 @@ PARAM_NAMES = {0x01: "ML-DSA-44", 0x02: "ML-DSA-65 (reserved)", 0x7f: "ML-DSA-87
 ATTESTATION_PREFIX = 0x51
 
 
+# Small HTML helpers. They keep backslashes out of f-string expressions, which Python before 3.12 rejects
+# (Ubuntu 22.04 ships 3.10).
+def PILL(cls, text):
+    return '<span class="pill ' + cls + '">' + text + '</span>'
+
+
+def ALINK(href, text):
+    return '<a href="' + href + '">' + text + '</a>'
+
+
 class Rpc:
     def __init__(self, url, auth):
         self.url, self.auth, self._id = url, auth, 0
@@ -223,7 +233,7 @@ def render_status(st, blocks, chain):
 def render_block_table(blocks):
     rows = "".join(f"<tr><td><a href='/block/{b['height']}'>{b['height']}</a></td><td class='mono'><a href='/block/{b['hash']}'>{b['hash']}</a></td><td>{fmt_time(b['time'])}</td>"
                    f"<td>{b['ntx']}</td><td>{b['size']}</td>"
-                   f"<td>{('<span class=\"pill v2\">' + str(b['v2_outputs']) + ' out</span> ') if b['v2_outputs'] else ''}{('<span class=\"pill v2\">' + str(b['v2_spends']) + ' spend</span>') if b['v2_spends'] else ''}</td></tr>"
+                   f"<td>{(PILL('v2', str(b['v2_outputs']) + ' out') + ' ') if b['v2_outputs'] else ''}{PILL('v2', str(b['v2_spends']) + ' spend') if b['v2_spends'] else ''}</td></tr>"
                    for b in blocks)
     nav = f"<p><a href='/blocks?from={blocks[-1]['height'] - 1}'>older &rarr;</a></p>" if blocks and blocks[-1]["height"] > 0 else ""
     return f"<h2>Recent blocks</h2><table><tr><th>height</th><th>hash</th><th>time</th><th>txs</th><th>size</th><th>ML-DSA v2</th></tr>{rows}</table>{nav}"
@@ -231,9 +241,9 @@ def render_block_table(blocks):
 
 def render_block(blk, chain):
     rows = "".join(f"<tr><td class='mono'><a href='/tx/{tx['txid']}'>{tx['txid']}</a></td><td>{len(tx['vin'])}</td><td>{len(tx['vout'])}</td><td>{tx['vsize']}</td>"
-                   f"<td>{''.join('<span class=\"pill cb\">coinbase</span>' for i in tx['vin'] if 'coinbase' in i)}"
-                   f"{''.join('<span class=\"pill v2\">v2 spend</span>' for i in tx['vin'] if classify_input(i).startswith('ML-DSA'))}"
-                   f"{''.join('<span class=\"pill v2\">v2 out</span>' for o in tx['vout'] if is_v2_spk(o['scriptPubKey']))}</td></tr>" for tx in blk["tx"])
+                   f"<td>{''.join(PILL('cb', 'coinbase') for i in tx['vin'] if 'coinbase' in i)}"
+                   f"{''.join(PILL('v2', 'v2 spend') for i in tx['vin'] if classify_input(i).startswith('ML-DSA'))}"
+                   f"{''.join(PILL('v2', 'v2 out') for o in tx['vout'] if is_v2_spk(o['scriptPubKey']))}</td></tr>" for tx in blk["tx"])
     prev = f"<a href='/block/{blk['previousblockhash']}'>&larr; {blk['height'] - 1}</a>" if "previousblockhash" in blk else ""
     nxt = f"<a href='/block/{blk['nextblockhash']}'>{blk['height'] + 1} &rarr;</a>" if "nextblockhash" in blk else ""
     body = f"""<h2>Block {blk['height']}</h2><p>{prev} {nxt}</p>
@@ -259,7 +269,7 @@ def render_tx(tx, chain):
         kind = classify_output(o)
         addr = spk.get("address", "")
         cls = "v2" if is_v2_spk(spk) else ""
-        vout_rows += (f"<tr><td>{o['n']}</td><td>{o['value']:.8f}</td><td class='mono'>{('<a href=\"/address/' + addr + '\">' + addr + '</a>') if addr else esc(spk.get('asm',''))}</td>"
+        vout_rows += (f"<tr><td>{o['n']}</td><td>{o['value']:.8f}</td><td class='mono'>{ALINK('/address/' + addr, addr) if addr else esc(spk.get('asm',''))}</td>"
                       f"<td><span class='pill {cls}'>{esc(kind)}</span></td></tr>")
     conf = f"{tx.get('confirmations', 0)} confirmation(s), block <a href='/block/{tx['blockhash']}'>{tx['blockhash'][:16]}…</a>" if tx.get("blockhash") else "<span class='warn'>unconfirmed (mempool)</span>"
     body = f"""<h2>Transaction</h2><table><tr><th>txid</th><td class="mono">{tx['txid']}</td></tr><tr><th>status</th><td>{conf}</td></tr>
