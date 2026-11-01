@@ -1,0 +1,8 @@
+block h=144 mined_in=11.88s end=1793574188.499 ntx=138 size=525656 weight=564965
+block h=145 mined_in=0.91s end=1793574189.421 ntx=254 size=970518 weight=1042545
+block h=146 mined_in=7.67s end=1793574204.284 ntx=142 size=540996 weight=581433
+block h=147 mined_in=3.17s end=1793574209.786 ntx=206 size=786436 weight=844921
+block h=148 mined_in=10.93s end=1793574227.544 ntx=211 size=805611 weight=865506
+block h=149 mined_in=8.64s end=1793574236.196 ntx=189 size=721241 weight=774932
+block h=150 mined_in=1.37s end=1793574237.984 ntx=67 size=253371 weight=272658
+block h=151 mined_in=22.17s end=1793574268.782 ntx=1 size=261 weight=936

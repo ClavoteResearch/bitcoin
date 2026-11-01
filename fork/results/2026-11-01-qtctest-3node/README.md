@@ -14,13 +14,13 @@ monetary output type is witness v2 ML-DSA-44 (FIPS 204 via liboqs). Everything h
 | Nodes | A: Ryzen 9 5900X, 24 vCPU, 64 GB (miner, outbound-only). B: Core i5-10400F, 12 vCPU, 16 GB. C: EPYC 7551P, 12.8 vCPU, 26 GB. All on Vast.ai, Quebec and Saskatchewan |
 | Network | public IPs, round-trip 28 to 62 ms between nodes (`minping` in `nodes/*/getpeerinfo.json`) |
 | Peers | A connects out to B and C; B and C connect to each other. `-dnsseed=0 -txindex=1`; B and C `-listen=1 -port=28333` |
-| Clocks | each node's offset from NTP measured with `ntpdate -q` before every test and subtracted, so cross-node deltas are good to a few milliseconds |
+| Clocks | each node's offset from NTP was measured with `ntpdate -q` before every test and was under 3 ms. In `tests/t0` to `t4` it was NOT subtracted (a driver bug, fixed in `scripts/lib.sh`), so those cross-node deltas use raw node clocks and are good to about 5 ms. The stress analysis (`tests/stress`) does subtract it |
 
 ## Layout
 
 - `RESULTS.md` paper-ready tables and caveats
 - `timings.csv` every timing as `test,metric,value,unit,note`
-- `tests/` the raw output of each test script
+- `tests/` the raw output of each test script; `tests/stress/` the stress test (driver log, analysis, CSV, raw files, diagnostic)
 - `nodes/{A,B,C}/` per-node RPC snapshots (`getblockchaininfo`, `getpeerinfo`, `getchaintips`, `getmempoolinfo`, `getnetworkinfo`, `getnettotals`), `debug.log`, key events, build log, raw poller outputs
 - `single-node-run/` the earlier one-node run: 11 blocks as JSON (`blocks.jsonl`), per-block summary, deployment info
 - `scripts/` the drivers (`t0`..`t4`, `t3b`), remote helpers (`qt.sh`, `poll.sh`, `act.sh`, `sp.sh`, `batch.sh`), `nodebuild34.sh`
@@ -35,4 +35,4 @@ public testnet data and are left as they were.
 
 `scripts/nodebuild34.sh` builds a node on Ubuntu 22.04 (apt dependencies, liboqs 0.14.0 from source, this repository).
 `scripts/lib.sh` holds the host table (fill in your own), then run `t0_connect.sh`, `t1_send.sh`, `t2_script.sh`,
-`t3_double.sh`, `t3b_partition.sh`, `t4_tps.sh`. The per-node helpers expect `/root/src/qcoin/build/bin` and `/root/qtctest-data`.
+`t3_double.sh`, `t3b_partition.sh`, `t4_tps.sh`, `t5_stress.sh` (then `t5b_diag.sh`). The per-node helpers expect `/root/src/qcoin/build/bin` and `/root/qtctest-data`.

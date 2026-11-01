@@ -1,6 +1,6 @@
 # Results
 
-All times are seconds, corrected for each node's measured NTP offset (all offsets were under 3 ms). One run per row unless noted,
+All times are seconds from the nodes' own clocks. Each node's offset from NTP was measured before every test and was under 3 ms, but a driver bug meant it was not subtracted, so cross-node deltas in sections 1 to 3 are good to about 5 ms (the stress analysis in section 8 does apply it). One run per row unless noted,
 so treat them as samples, not distributions. Raw outputs are in `tests/`; every number is also in `timings.csv`.
 
 ## 1. Correctness on a live three-node network
@@ -81,3 +81,44 @@ which is the value rule working; the genesis coinbase is the only non-v2 output.
 - The script-path control-block layout (34-byte base, at most 8 nodes) and the rule that every attestation entry is
   verified exactly once are this implementation's choices; the BIP draft's section 5 text was not available.
 - The wallet signs key-path spends only. Script-path spends were built and signed by a test tool.
+
+## 8. Stress test
+
+Setup: 3,600 spendable outputs of 0.02 coin were created by four 900-output transactions on A. Every test spend has one input and one
+output and pays 0.0198 coin (fee 0.0002). Senders used `sendrawtransaction` through parallel `bitcoin-cli` callers. One run per row.
+Raw data and the analysis are in `tests/stress/`.
+
+| Burst from A | A accepts all in (s) | A rate (tx/s) | B has all (s) | C has all (s) | Block txs | Block MB | Block MWU | Block to B (s) | Block to C (s) |
+|---|---|---|---|---|---|---|---|---|---|
+| 100 | 2.47 | 40.4 | 9.28 | 4.95 | 101 | 0.38 | 0.413 | 0.042 | 0.046 |
+| 250 | 5.87 | 42.6 | 9.33 | 8.71 | 251 | 0.96 | 1.030 | 0.055 | 0.055 |
+| 500 | 11.82 | 42.3 | 14.56 | 19.59 | 501 | 1.92 | 2.059 | 2.678 | 0.052 |
+| 900 | 21.26 | 42.3 | 27.24 | 25.79 | 901 | 3.45 | 3.706 | 6.545 | 0.055 |
+
+"Has all" is time from the first broadcast until the node's mempool held every transaction. The block was mined on A after relay finished.
+
+- No transaction was rejected in any run: 3,750 in the main run and 900 in the diagnostic.
+- Acceptance on A was flat at about 42 tx/s whatever the burst size, so it does not depend on how many transactions are queued. The cause (validation or RPC overhead) was not profiled.
+- Relay finished 3 to 8 s after A's last acceptance. Overall full-mempool relay throughput was 11 to 33 tx/s.
+- A block of 901 spends is 3.45 MB and 3.706 MWU, 93% of the 4 MWU limit, and was accepted by all nodes.
+- Cold block: with 500 spends mined the moment A had accepted them, B held at least 375 and C at least 250 of the 500 when the block arrived. The block reached C in 0.48 s and B in 4.6 s.
+- Concurrent senders: 100 spends each from A, B and C at the same instant, 300 in total. All were accepted. The senders finished in 2.4 s (A), 3.1 s (B) and 6.9 s (C). Every node held all 300 within 8.9 s of the common start. One block mined on C held 301 transactions (1.15 MB, 1.236 MWU, mining call 5.0 s) and reached A, B and C within 0.05 s.
+- Sustained load: 20 tx/s for 60 s from A (1,200 spends, none rejected) while C mined a block every 10 s. Confirmation latency, from send to the block holding the transaction: minimum 3.4 s, median 14.8 s, 95th percentile 21.8 s, maximum 24.1 s. Overall 1,200 confirmed in 71.4 s, 16.8 tx/s including the tail. Blocks held 66 to 253 spends (the last, at +102 s, was empty). Peak mempool was 464 (A), 429 (B), 393 (C) transactions and peak resident memory 471 MB (A), 144 MB (B), 88 MB (C). One block took 22 s to find, which is ordinary variance for one CPU core at this difficulty.
+
+### Block connection time and the wallet
+
+Block-to-B was 2.7 s and 6.5 s for the 500 and 900 bursts but 0.05 s on C. In the stress run every burst paid an address of B's wallet, which is the difference between B and C. A diagnostic (`tests/stress/t5b_diag.txt`) repeated a 450-spend burst twice:
+
+| Payments to | B reached the block (s) | C reached the block (s) |
+|---|---|---|
+| an address no wallet owns | 0.037 | 0.065 |
+| an address of B's wallet | 0.355 | 0.055 |
+
+So when no wallet is involved, a block of 450 to 901 spends reached the nodes in 37 to 65 ms including propagation, which bounds validation, ML-DSA verification of every input included, at under about 65 ms. I did not measure why it is that fast; Bitcoin Core's script-execution cache, which skips re-verifying transactions already accepted into the mempool, is the likely reason. The slowdown on B is consistent with its wallet processing its own incoming payments; the diagnostic supports that but it was not profiled.
+
+### Limits specific to the stress test
+
+- Blocks were mined by hand, so latency under sustained load reflects the 10 s cadence I chose, not a live block interval.
+- Acceptance rate depends on the number of callers and the speed of `bitcoin-cli` process start-up; it is a lower bound for the node.
+- The CPU figures in the raw node samples are `ps` lifetime averages and carry no information about load; they are left out of `timings.csv`.
+- Three nodes, one run per row.

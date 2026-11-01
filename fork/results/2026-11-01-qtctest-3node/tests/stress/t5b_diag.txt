@@ -1,0 +1,16 @@
+== t5b: block connection on B with payments to an address B does not own ==
+foreign v2 address (no wallet owns it): tq1zg5t6k2g8pw0wgxjf5x3lqpzr5u6p72re8uln5udngry9ps6pwvgsq9yn79
+split: split n=450 address_gen_s=18.70 total_s=19.83 SPLIT_TXID=7f3acea1f25f337cd42ba9567832dd8bdb9c12d0ff938548f8d3937eb59701ba 
+confirm: mine_start=1793574445.148376318 mine_end=1793574446.651740877 hash=00000002b6d5f6c1b63512cc346c114184e9792780940e455b26a959469655a1 height=152
+--- d_foreign: 450 spends paying tq1zg5t6k2g8pw0wgxjf5x3lqpzr5u6p72re8uln5udngry9ps6pwvgsq9yn79
+prepared=450 prep_seconds=7.04
+first_start=1793574476.371703 last_end=1793574487.195866 n=450 ok=450 fail=0 workers=12 rate=0.0
+  B reached the block 0.037 s after A found it
+  C reached the block 0.065 s after A found it
+split: split n=450 address_gen_s=18.86 total_s=22.95 SPLIT_TXID=769aae9c1055cba250af7566b9fb9f9903be4936e6e79960066f8614b755b691 
+confirm: mine_start=1793574538.014304020 mine_end=1793574540.362452232 hash=0000009d5fd90d1059e74bb68c0d198c46708fe69701973e220ba50781b358fe height=154
+--- d_ownB: 450 spends paying tq1zhxaamn2lpwnvxz0yuzlj96dcxxxf5fnvpjulm223z99xwqa4zu5qwjuhz3
+prepared=450 prep_seconds=7.42
+first_start=1793574572.275954 last_end=1793574582.794602 n=450 ok=450 fail=0 workers=12 rate=0.0
+  B reached the block 0.355 s after A found it
+  C reached the block 0.055 s after A found it

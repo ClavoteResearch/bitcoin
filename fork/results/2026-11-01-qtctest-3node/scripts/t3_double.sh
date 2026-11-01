@@ -18,7 +18,7 @@ pstate() { # NODE FILE -> "state@epoch" or "-" (first poll line "seen")
 pconf() { fetch "$1" "$2" | awk '$1=="conf"{print $2"@"$NF}' | head -1; }
 
 log "== t3: double spend =="
-measure_clocks | tee -a "$OUT"
+measure_clocks | tee -a "$OUT"; . "$RES/offsets.env"
 ADDR_A=$(rx A '. /root/qt.sh; $CLI -rpcwallet=miner getnewmldsaaddress netmine' | tail -1)
 ADDR_B=$(rx B '. /root/qt.sh; $CLI -rpcwallet=wb getnewmldsaaddress ds' | tail -1)
 ADDR_C=$(rx C '. /root/qt.sh; $CLI -rpcwallet=wc getnewmldsaaddress ds' | tail -1)

@@ -10,7 +10,7 @@ tt() { awk -v e="$1" -v o="$2" 'BEGIN{printf "%.6f", e-o}'; }
 ep() { awk -v k="$2" '$1==k {print $NF}' <<<"$1" | head -1; }
 
 log "== t4: throughput sample, N=$N =="
-measure_clocks | tee -a "$OUT"
+measure_clocks | tee -a "$OUT"; . "$RES/offsets.env"
 ADDR_A=$(rx A '. /root/qt.sh; $CLI -rpcwallet=miner getnewmldsaaddress netmine' | tail -1)
 ADDR_B=$(rx B '. /root/qt.sh; $CLI -rpcwallet=wb getnewmldsaaddress tps' | tail -1)
 

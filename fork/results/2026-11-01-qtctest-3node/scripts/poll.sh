@@ -23,4 +23,10 @@ case "$MODE" in
              pending=$nxt; sleep 0.02
            done; } > "$OUT" ;;
   hcheck) h=$1; { echo "start $(now)"; echo "height $(wait_height "$h" 240)"; echo "mempool_after $(msize) $(now)"; } > "$OUT" ;;
+  sample) secs=$1; end=$(( $(date +%s) + secs )); pid=$(pgrep -x bitcoind | head -1)
+          { echo "# epoch mempool_txs height bitcoind_cpu_pct bitcoind_rss_kb"
+            while [ "$(date +%s)" -lt "$end" ]; do
+              echo "$(now) $(msize) $(height) $(ps -o %cpu= -p "$pid" | tr -d ' ') $(ps -o rss= -p "$pid" | tr -d ' ')"
+              sleep 1
+            done; } > "$OUT" ;;
 esac

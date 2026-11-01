@@ -1,0 +1,2 @@
+first_start=1793573753.980877 last_end=1793573759.851582 n=250 ok=250 fail=0 workers=12 rate=0.0
+call_seconds median=0.275 p95=0.326 max=0.374 window=5.871 accepted_per_s=42.6

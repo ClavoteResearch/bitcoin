@@ -9,7 +9,7 @@ tt() { awk -v e="$1" -v o="$2" 'BEGIN{printf "%.6f", e-o}'; }
 getp() { local f; for i in $(seq 1 40); do f=$(fetch "$1" "$2"); echo "$f" | grep -q '^conf' && break; sleep 2; done; awk -v k="$3" '$1==k {print $NF}' <<<"$f" | head -1; }
 
 log "== t2: script-path spend on the network =="
-measure_clocks | tee -a "$OUT"
+measure_clocks | tee -a "$OUT"; . "$RES/offsets.env"
 SI=$(python -c 'import secrets;print(secrets.token_hex(32))'); SL=$(python -c 'import secrets;print(secrets.token_hex(32))')
 ADDR_A=$(rx A '. /root/qt.sh; $CLI -rpcwallet=miner getnewmldsaaddress netmine' | tail -1)
 DEST_SPK=$(rx A ". /root/qt.sh; \$CLI validateaddress $ADDR_A" | python -c 'import sys,json; print(json.load(sys.stdin)["scriptPubKey"])')

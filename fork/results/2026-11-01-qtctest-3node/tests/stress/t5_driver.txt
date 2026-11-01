@@ -1,0 +1,68 @@
+== t5: stress test ==
+clock A: ahead of NTP by 0.000868 s
+clock B: ahead of NTP by -0.001851 s
+clock C: ahead of NTP by -0.001171 s
+--- setup
+A mature balance: 599.9983699
+mining 20 blocks on A to mature more coinbases: mine_start=1793573441.981875592 mine_end=1793573444.848121900 hash=000000452188480727f9a717b96adc252727b2a2cb9c8ae3ec46c84db6a63c1e height=136
+split 1: split n=900 address_gen_s=36.98 total_s=37.07 SPLIT_TXID=6f97412e83aa738853eceac4124be979cf95a95b67f3ebd229f5f5b2958a9bce 
+split 2: split n=900 address_gen_s=43.13 total_s=43.25 SPLIT_TXID=ad6d2d65695e1a72f3d636fd0f5db4495ceb6bbd770e573b63459ef09a1b22bc 
+split 3: split n=900 address_gen_s=43.42 total_s=43.60 SPLIT_TXID=fe81d6270845f26ea3f48f77ba6d568244d1455cd3dfd484299702afbb762115 
+split 4: split n=900 address_gen_s=43.44 total_s=43.60 SPLIT_TXID=b0fde2d21da0a2d3b79bb84d0f71f40fd3b136495ea8388d5560fd1453550c08 
+S3 funding: 100 addresses each on B and C
+SENDMANY_TXID=6ed5d17ed4da0ef903688888fddf8faeeccbba88c12e0dafa55481a40d99a93f
+confirm everything: mine_start=1793573636.339394384 mine_end=1793573637.022136861 hash=00000062e01f5f6edc8be111c3c5aa08aa16327f3dd363f27b3be130e073cfee height=137
+heights: A=137 B=137 C=137; 0.02 outputs: A=3600 B=100 C=100
+--- s1_100: N=100, mine immediately after broadcast: 0
+prepared=100 prep_seconds=2.40
+first_start=1793573685.164946 last_end=1793573687.638709 n=100 ok=100 fail=0 workers=12 rate=0.0
+call_seconds median=0.274 p95=0.384 max=0.411 window=2.474 accepted_per_s=40.4
+mine: mine_start=1793573701.636195853 mine_end=1793573705.346647695 hash=00000046a036c30a5f0747a72ce01feafa069484800edbd0ab4f14c45b8ea7b6 height=138
+block: 101 txs, 383761 bytes, 412636 WU; mempools after: A=0 B=0 C=0
+--- s1_250: N=250, mine immediately after broadcast: 0
+prepared=250 prep_seconds=4.45
+first_start=1793573753.980877 last_end=1793573759.851582 n=250 ok=250 fail=0 workers=12 rate=0.0
+call_seconds median=0.275 p95=0.326 max=0.374 window=5.871 accepted_per_s=42.6
+mine: mine_start=1793573769.314765980 mine_end=1793573772.568017722 hash=000000551c8ff18440a1a2876ffbded971ae9c47304b0c72c1e1eca5a16877cd height=139
+block: 251 txs, 959011 bytes, 1030186 WU; mempools after: A=0 B=0 C=0
+--- s1_500: N=500, mine immediately after broadcast: 0
+prepared=500 prep_seconds=7.67
+first_start=1793573825.869962 last_end=1793573837.687104 n=500 ok=500 fail=0 workers=12 rate=0.0
+call_seconds median=0.280 p95=0.309 max=0.373 window=11.817 accepted_per_s=42.3
+mine: mine_start=1793573847.578868387 mine_end=1793573849.456114899 hash=0000007125216e5f552d5fa5600e424851eecd7709db968b37305e1debefce9b height=140
+block: 501 txs, 1917763 bytes, 2059444 WU; mempools after: A=0 B=0 C=0
+--- s1_900: N=900, mine immediately after broadcast: 0
+prepared=900 prep_seconds=13.22
+first_start=1793573908.866653 last_end=1793573930.126173 n=900 ok=900 fail=0 workers=12 rate=0.0
+call_seconds median=0.278 p95=0.322 max=0.421 window=21.260 accepted_per_s=42.3
+mine: mine_start=1793573939.434677723 mine_end=1793573940.046471262 hash=000000228cc9d0fd6f27cb8e3135d5c52965d3054e16682590c5d8fa34e4cab3 height=141
+block: 901 txs, 3451763 bytes, 3706244 WU; mempools after: A=0 B=0 C=0
+--- s2_cold: N=500, mine immediately after broadcast: 1
+prepared=500 prep_seconds=7.51
+first_start=1793573994.243719 last_end=1793574006.183580 n=500 ok=500 fail=0 workers=12 rate=0.0
+call_seconds median=0.279 p95=0.354 max=0.433 window=11.940 accepted_per_s=41.9
+mine: mine_start=1793574007.472332548 mine_end=1793574008.171939780 hash=000000b4e66e13a44f0d7ea06bdd7df0b29edde8836cd0d846aed94dc2d9ac9c height=142
+block: 501 txs, 1917763 bytes, 2059444 WU; mempools after: A=0 B=0 C=0
+--- s3: 100 spends from each of A, B, C at the same instant
+prepared=100 prep_seconds=1.83
+prepared=100 prep_seconds=1.07
+prepared=100 prep_seconds=1.77
+s3 sends: A: first_start=1793574077.395660 last_end=1793574079.791345 n=100 ok=100 fail=0 workers=8 rate=0.0 | B: first_start=1793574077.398036 last_end=1793574080.447319 n=100 ok=100 fail=0 workers=8 rate=0.0 | C: first_start=1793574077.393769 last_end=1793574084.316481 n=100 ok=100 fail=0 workers=8 rate=0.0
+mine on C: mine_start=1793574096.440752552 mine_end=1793574101.463028312 hash=0000005591c1b450df2b6997ead13baea1fad8f4cb6153267b184e897a82b1f6 height=143
+block: 301 txs, 1150763 bytes, 1236044 WU
+--- s4: sustained 20 tx/s for 60 s from A, blocks mined on C every 10 s
+prepared=1200 prep_seconds=17.28
+s4 sender: first_start=1793574166.613173 last_end=1793574226.593947 n=1200 ok=1200 fail=0 workers=16 rate=20.0 call_seconds median=0.026 p95=0.701 max=2.174 window=59.981 accepted_per_s=20.0 
+s4 blocks mined on C:
+block h=144 mined_in=11.88s end=1793574188.499 ntx=138 size=525656 weight=564965
+block h=145 mined_in=0.91s end=1793574189.421 ntx=254 size=970518 weight=1042545
+block h=146 mined_in=7.67s end=1793574204.284 ntx=142 size=540996 weight=581433
+block h=147 mined_in=3.17s end=1793574209.786 ntx=206 size=786436 weight=844921
+block h=148 mined_in=10.93s end=1793574227.544 ntx=211 size=805611 weight=865506
+block h=149 mined_in=8.64s end=1793574236.196 ntx=189 size=721241 weight=774932
+block h=150 mined_in=1.37s end=1793574237.984 ntx=67 size=253371 weight=272658
+block h=151 mined_in=22.17s end=1793574268.782 ntx=1 size=261 weight=936
+--- final state
+A: height=151 tip=000000e91bc97771 mempool=0 peers=2 errors_in_log=0
+B: height=151 tip=000000e91bc97771 mempool=0 peers=3 errors_in_log=0
+C: height=151 tip=000000e91bc97771 mempool=0 peers=3 errors_in_log=0

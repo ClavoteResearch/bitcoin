@@ -12,7 +12,7 @@ getp() { # NODE FILE KEY -> epoch (waits for conf line)
 getstate() { fetch "$1" "$2" | awk -v k="$3" '$1==k {print $2}' | head -1; }
 
 log "== t1: peer-to-peer send =="
-measure_clocks | tee -a "$OUT"
+measure_clocks | tee -a "$OUT"; . "$RES/offsets.env"
 rx B '. /root/qt.sh; $CLI createwallet wb >/dev/null 2>&1; echo wallet-wb-ok'
 rx C '. /root/qt.sh; $CLI createwallet wc >/dev/null 2>&1; echo wallet-wc-ok'
 ADDR_B=$(rx B '. /root/qt.sh; $CLI -rpcwallet=wb getnewmldsaaddress rx' | tail -1)

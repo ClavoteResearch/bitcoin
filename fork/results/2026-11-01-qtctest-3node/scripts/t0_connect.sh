@@ -10,7 +10,7 @@ for n in $NODES; do log "$n height=$(rx $n '. /root/qt.sh; height' | tail -1)"; 
 HA=$(rx A '. /root/qt.sh; height' | tail -1)
 log "target height (node A) = $HA"
 
-measure_clocks | tee -a "$OUT"
+measure_clocks | tee -a "$OUT"; . "$RES/offsets.env"
 # pollers on B and C: time until they reach A's height
 for n in B C; do bg $n "/root/poll.sh /root/out/t0_$n.txt hcheck $HA" >/dev/null; done
 sleep 1

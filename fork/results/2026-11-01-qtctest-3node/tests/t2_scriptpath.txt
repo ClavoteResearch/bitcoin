@@ -1,3 +1,6 @@
+NOTE: where this file says 'NTP-corrected', read 'raw node clocks'. The NTP offsets were measured (all under 3 ms) but a
+driver bug meant they were not subtracted. Cross-node deltas here are good to about 5 ms. See README.md.
+
 == t2: script-path spend on the network ==
 clock A: ahead of NTP by 0.001998 s
 clock B: ahead of NTP by 0.000184 s

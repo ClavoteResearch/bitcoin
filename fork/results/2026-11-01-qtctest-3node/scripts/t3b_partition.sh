@@ -14,7 +14,7 @@ print(" | ".join("h=%d len=%d %s %s" % (t["height"], t["branchlen"], t["status"]
 peers() { rx "$1" '. /root/qt.sh; $CLI getconnectioncount' | tail -1; }
 
 log "== t3b: partition and reorg =="
-measure_clocks | tee -a "$OUT"
+measure_clocks | tee -a "$OUT"; . "$RES/offsets.env"
 ADDR_A=$(rx A '. /root/qt.sh; $CLI -rpcwallet=miner getnewmldsaaddress netmine' | tail -1)
 ADDR_B=$(rx B '. /root/qt.sh; $CLI -rpcwallet=wb getnewmldsaaddress ds' | tail -1)
 ADDR_C=$(rx C '. /root/qt.sh; $CLI -rpcwallet=wc getnewmldsaaddress ds' | tail -1)

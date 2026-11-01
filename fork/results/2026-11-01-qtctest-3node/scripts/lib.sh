@@ -36,4 +36,6 @@ measure_clocks() {
     case "$o" in ''|*[!0-9.eE+-]*) o=0; echo "clock $n: NTP offset unavailable, assuming 0";; *) echo "clock $n: ahead of NTP by $o s";; esac
     eval "OFF_$n=$o"
   done
+  # pipes run functions in a subshell, so also write the values where callers can source them
+  printf 'OFF_A=%s\nOFF_B=%s\nOFF_C=%s\n' "$OFF_A" "$OFF_B" "$OFF_C" > "$RES/offsets.env"
 }

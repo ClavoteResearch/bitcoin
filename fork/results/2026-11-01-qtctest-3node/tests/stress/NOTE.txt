@@ -1,0 +1,3 @@
+t5_stress.txt: the 'cpu' figures in the S4 node samples are ps's average CPU since the process started, not
+instantaneous load. They say nothing about load and are omitted from timings.csv. Memory (RSS) is valid.
+t5b_diag.txt used raw node clocks (offsets under 3 ms).

@@ -1,0 +1,7 @@
+{"label":"s1_100","N":100,"imm":0,"mine_start":1793573701.636195853,"mine_end":1793573705.346647695,"hash":"00000046a036c30a5f0747a72ce01feafa069484800edbd0ab4f14c45b8ea7b6","H1":138,"blk_ntx":101,"blk_size":383761,"blk_weight":412636}
+{"label":"s1_250","N":250,"imm":0,"mine_start":1793573769.314765980,"mine_end":1793573772.568017722,"hash":"000000551c8ff18440a1a2876ffbded971ae9c47304b0c72c1e1eca5a16877cd","H1":139,"blk_ntx":251,"blk_size":959011,"blk_weight":1030186}
+{"label":"s1_500","N":500,"imm":0,"mine_start":1793573847.578868387,"mine_end":1793573849.456114899,"hash":"0000007125216e5f552d5fa5600e424851eecd7709db968b37305e1debefce9b","H1":140,"blk_ntx":501,"blk_size":1917763,"blk_weight":2059444}
+{"label":"s1_900","N":900,"imm":0,"mine_start":1793573939.434677723,"mine_end":1793573940.046471262,"hash":"000000228cc9d0fd6f27cb8e3135d5c52965d3054e16682590c5d8fa34e4cab3","H1":141,"blk_ntx":901,"blk_size":3451763,"blk_weight":3706244}
+{"label":"s2_cold","N":500,"imm":1,"mine_start":1793574007.472332548,"mine_end":1793574008.171939780,"hash":"000000b4e66e13a44f0d7ea06bdd7df0b29edde8836cd0d846aed94dc2d9ac9c","H1":142,"blk_ntx":501,"blk_size":1917763,"blk_weight":2059444}
+{"label":"s3","N":300,"start_true":1793574077.393,"mine_start":1793574096.440752552,"mine_end":1793574101.463028312,"hash":"0000005591c1b450df2b6997ead13baea1fad8f4cb6153267b184e897a82b1f6","H1":143,"blk_ntx":301,"blk_size":1150763,"blk_weight":1236044}
+{"label":"s4","start_true":1793574166.608}

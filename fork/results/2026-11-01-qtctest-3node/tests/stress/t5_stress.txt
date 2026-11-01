@@ -1,0 +1,38 @@
+== t5 stress test (times in s, NTP-corrected; offsets A=0.0009 B=-0.0019 C=-0.0012) ==
+
+S1/S2 bursts: N independent 1-input 1-output witness-v2 spends broadcast from A (12 parallel RPC callers), one block mined on A
+scenario      N acc.win  acc/s fail | B full C full relay tx/s | blk tx blk MB blk MWU |  mine   ->B   ->C left B/C
+s1_100      100    2.47   40.4    0 |   9.28   4.95       10.8 |    101   0.38   0.413 |  3.71 0.042 0.046      0/0
+           mempool reached 25/50/75/100% of N after: B: 6.75 / 6.75 / 9.22 / 9.28; C: 4.45 / 4.57 / 4.62 / 4.95
+s1_250      250    5.87   42.6    0 |   9.33   8.71       26.8 |    251   0.96   1.030 |  3.25 0.055 0.055      0/0
+           mempool reached 25/50/75/100% of N after: B: 3.93 / 9.12 / 9.26 / 9.33; C: 4.27 / 6.29 / 6.77 / 8.71
+s1_500      500   11.82   42.3    0 |  14.56  19.59       25.5 |    501   1.92   2.059 |  1.88 2.678 0.052      0/0
+           mempool reached 25/50/75/100% of N after: B: 7.12 / 8.31 / 14.40 / 14.56; C: 7.54 / 8.65 / 13.45 / 19.59
+s1_900      900   21.26   42.3    0 |  27.24  25.79       33.0 |    901   3.45   3.706 |  0.61 6.545 0.055      0/0
+           mempool reached 25/50/75/100% of N after: B: 9.27 / 13.33 / 23.34 / 27.24; C: 8.37 / 14.70 / 22.85 / 25.79
+s2_cold     500   11.94   41.9    0 |      -      -          - |    501   1.92   2.059 |  0.70 4.589 0.482      0/0
+           mempool reached 25/50/75/100% of N after: B: 5.77 / 9.41 / 11.76; C: 6.35 / 9.53
+
+S3: 100 spends each from A, B and C broadcast at the same instant (start epoch 1793574077.393)
+  A: sent 100 in 2.40 s (ok=100 fail=0, start offset 0.002 s); mempool 150/225/300 at +7.85 / +8.39 / +8.82 s
+  B: sent 100 in 3.05 s (ok=100 fail=0, start offset 0.007 s); mempool 150/225/300 at +7.05 / +7.16 / +8.86 s
+  C: sent 100 in 6.92 s (ok=100 fail=0, start offset 0.002 s); mempool 150/225/300 at +3.86 / +4.25 / +7.27 s
+  block mined on C: 301 txs, 1.15 MB, 1.236 MWU, mining call 5.02 s; height reached on A/B/C at +0.025 / +0.051 / +0.010 s after C found it; mempools after: 0/0/0
+
+S4: sustained load, 20 tx/s for 60 s (1200 spends) from A; blocks mined on C every 10 s
+  accepted by A: 1200 of 1200 (failed 0); send window 60.0 s => 20.0 tx/s offered
+  blocks on C (time since first send, spends in block, block txs, MB, MWU, mining s):
+    h=144 +  21.9s  spends= 137 txs= 138  0.53 MB  0.565 MWU mined_in=11.88s
+    h=145 +  22.8s  spends= 253 txs= 254  0.97 MB  1.043 MWU mined_in=0.91s
+    h=146 +  37.7s  spends= 141 txs= 142  0.54 MB  0.581 MWU mined_in=7.67s
+    h=147 +  43.2s  spends= 205 txs= 206  0.79 MB  0.845 MWU mined_in=3.17s
+    h=148 +  60.9s  spends= 210 txs= 211  0.81 MB  0.866 MWU mined_in=10.93s
+    h=149 +  69.6s  spends= 188 txs= 189  0.72 MB  0.775 MWU mined_in=8.64s
+    h=150 +  71.4s  spends=  66 txs=  67  0.25 MB  0.273 MWU mined_in=1.37s
+    h=151 + 102.2s  spends=   0 txs=   1  0.00 MB  0.001 MWU mined_in=22.17s
+  confirmed 1200 of 1200; confirmation latency (send to the block that includes it): min 3.36  median 14.79  p95 21.79  max 24.13 s
+  sustained confirmed throughput: 1200 txs over 71.4 s = 16.8 tx/s (includes the 10 s block cadence and the tail)
+  node samples during s4 (peak mempool txs; 'cpu' is ps's lifetime average since start, NOT load, ignore it; peak RSS MB):
+    A: mempool 464  cpu 10%  rss 471 MB  (110 samples)
+    B: mempool 429  cpu 2%  rss 144 MB  (111 samples)
+    C: mempool 393  cpu 5%  rss 88 MB  (110 samples)
