@@ -335,8 +335,9 @@ Launch checklist (in order):
    (the default build has the whole v2 path; the option only adds the non-BIP
    ML-DSA-87 extras). Publish reproducible builds for Linux at least, with liboqs
    either statically linked or pinned (0.14.0) in the install instructions.
-   Commit 13d6b525 (legacy ECDSA-path routing) is reverted, so legacy spends
-   are upstream-identical and the v2 rules are a soft fork.
+   Commit 13d6b525 (legacy ECDSA-path routing) is reverted. On  the
+   value rule makes Qcoin a separate coin (ECDSA outputs with value are invalid);
+   the Bitcoin chains in the tree keep upstream rules.
 2. **Genesis and PoW.** The genesis above (`1e00ffff`) is the open-testnet
    value. To change it again follow "Raising the proof-of-work difficulty" (a
    difficulty-1 candidate is already mined and listed) and wipe data
