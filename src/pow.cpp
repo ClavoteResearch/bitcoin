@@ -14,6 +14,10 @@
 #include <uint256.h>
 #include <util/check.h>
 
+#include <limits>
+#include <stdexcept>
+#include <string>
+
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
@@ -173,27 +177,47 @@ bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Par
     return true;
 }
 
-uint256 GetBlockPoWHash(const CBlockHeader& header, const Consensus::Params& params, int height)
+int RandomXKeyHeight(const Consensus::Params& params, int height)
+{
+    const int epoch{params.nRandomXKeyEpoch}, lag{params.nRandomXKeyLag};
+    Assert(epoch > 0 && (epoch & (epoch - 1)) == 0); // a power of two
+    if (height <= epoch + lag) return 0;
+    return (height - lag - 1) & ~(epoch - 1);
+}
+
+RandomXKeyLookup RandomXKeyLookupFromIndex(const CBlockIndex* prev)
+{
+    return [prev](int key_height) -> std::optional<uint256> {
+        if (!prev || key_height > prev->nHeight) return std::nullopt;
+        const CBlockIndex* key_block{prev->GetAncestor(key_height)};
+        if (!key_block) return std::nullopt;
+        return key_block->GetBlockHash();
+    };
+}
+
+uint256 GetBlockPoWHash(const CBlockHeader& header, const Consensus::Params& params, int height, const RandomXKeyLookup& key_lookup)
 {
     if (height < params.RandomXHeight) return header.GetHash();
+    const std::optional<uint256> key{key_lookup ? key_lookup(RandomXKeyHeight(params, height)) : std::nullopt};
+    if (!key) throw std::runtime_error("RandomX key block unavailable at height " + std::to_string(RandomXKeyHeight(params, height)));
     DataStream ss{};
     ss << header; // the 80 header bytes, nonce included
     Assert(ss.size() == 80);
     unsigned char out[32];
-    qcoin::pow::RandomXHash(UCharCast(ss.data()), ss.size(), out);
+    qcoin::pow::RandomXHash(key->begin(), key->size(), UCharCast(ss.data()), ss.size(), out);
     return uint256(std::span<const unsigned char>(out, 32));
 }
 
-bool CheckBlockHeaderPoW(const CBlockHeader& header, std::optional<int> height, const Consensus::Params& params)
+bool CheckBlockHeaderPoW(const CBlockHeader& header, std::optional<int> height, const Consensus::Params& params, const RandomXKeyLookup& key_lookup)
 {
     if (height) {
         if (*height >= params.RandomXHeight && *height == 0 && header.GetHash() == params.hashGenesisBlock) return true;
-        return CheckProofOfWork(GetBlockPoWHash(header, params, *height), header.nBits, params);
+        if (*height >= params.RandomXHeight && !(key_lookup && key_lookup(RandomXKeyHeight(params, *height)))) return false;
+        return CheckProofOfWork(GetBlockPoWHash(header, params, *height, key_lookup), header.nBits, params);
     }
     // Unknown height: heights >= 1 are possible. SHA-256d applies below RandomXHeight, RandomX from it.
     const bool sha_possible = params.RandomXHeight > 1;
     const bool randomx_possible = params.RandomXHeight < std::numeric_limits<int>::max();
     if (sha_possible && CheckProofOfWork(header.GetHash(), header.nBits, params)) return true;
-    if (randomx_possible) return CheckProofOfWork(GetBlockPoWHash(header, params, std::max(params.RandomXHeight, 1)), header.nBits, params);
-    return false;
+    return randomx_possible && DeriveTarget(header.nBits, params.powLimit).has_value();
 }

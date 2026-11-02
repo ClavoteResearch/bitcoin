@@ -2869,13 +2869,15 @@ void PeerManagerImpl::SendBlockTransactions(CNode& pfrom, Peer& peer, const CBlo
 bool PeerManagerImpl::CheckHeadersPoW(const std::vector<CBlockHeader>& headers, Peer& peer)
 {
     // Do these headers have proof-of-work matching what's claimed?
-    // Qcoin: the proof-of-work hash depends on the height, known when the first header's parent is.
-    std::optional<int> first_height;
-    if (!headers.empty()) {
+    // Qcoin: the proof-of-work hash and RandomX key depend on the height and chain, known when the first header's
+    // parent is (headers syncing verifies RandomX proofs itself for chains that are not in the block index).
+    bool pow_ok;
+    {
         LOCK(cs_main);
-        if (const CBlockIndex* prev{m_chainman.m_blockman.LookupBlockIndex(headers.front().hashPrevBlock)}) first_height = prev->nHeight + 1;
+        const CBlockIndex* first_parent{headers.empty() ? nullptr : m_chainman.m_blockman.LookupBlockIndex(headers.front().hashPrevBlock)};
+        pow_ok = HasValidProofOfWork(headers, m_chainparams.GetConsensus(), first_parent);
     }
-    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus(), first_height)) {
+    if (!pow_ok) {
         Misbehaving(peer, "header with invalid proof of work");
         return false;
     }

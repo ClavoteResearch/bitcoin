@@ -200,6 +200,26 @@ bool HeadersSyncState::ValidateAndProcessSingleHeader(const CBlockHeader& curren
         return false;
     }
 
+    // Qcoin: RandomX chains are not in the block index during presync, so the proof of work is verified here, with
+    // the key block taken from the known chain or from the key blocks seen earlier in this sync.
+    if (m_consensus_params.RandomXHeight < std::numeric_limits<int>::max()) {
+        const RandomXKeyLookup key_lookup{[&](int key_height) -> std::optional<uint256> {
+            if (key_height <= m_chain_start.nHeight) {
+                const CBlockIndex* key_block{m_chain_start.GetAncestor(key_height)};
+                if (!key_block) return std::nullopt;
+                return key_block->GetBlockHash();
+            }
+            const auto it{m_randomx_key_blocks.find(key_height)};
+            if (it == m_randomx_key_blocks.end()) return std::nullopt;
+            return it->second;
+        }};
+        if (next_height >= m_consensus_params.RandomXHeight && !CheckBlockHeaderPoW(current, next_height, m_consensus_params, key_lookup)) {
+            LogDebug(BCLog::NET, "Initial headers sync aborted with peer=%d: invalid proof of work at height=%i (presync phase)\n", m_id, next_height);
+            return false;
+        }
+        if (next_height % m_consensus_params.nRandomXKeyEpoch == 0) m_randomx_key_blocks[next_height] = current.GetHash();
+    }
+
     if (next_height % m_params.commitment_period == m_commit_offset) {
         // Add a commitment.
         m_header_commitments.push_back(m_hasher(current.GetHash()) & 1);

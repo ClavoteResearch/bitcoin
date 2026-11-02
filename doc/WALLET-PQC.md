@@ -191,27 +191,60 @@ RandomX and keep computing the block id with SHA-256d.
 |---|---|
 | Library | RandomX v1.2.1 (tevador/RandomX, commit `102f8acf`), BSD-3-Clause, vendored unmodified in `fork/src/crypto/randomx` (`VENDORED.txt`) |
 | RandomX configuration | upstream defaults (2 MiB scratchpad, 256 MiB Argon2 cache, 2 GiB dataset, 8 programs of 2048 iterations) |
-| Key (seed) | the 16 ASCII bytes `Qcoin-RandomX-v1`, **fixed for every chain: there is no key-block rotation** (`qcoin::pow::RANDOMX_KEY`) |
+| Key | **rotates every 2,048 blocks** (Monero's interval): the key of a block at height *h* is the identifier (double SHA-256 block hash, the 32 raw bytes in internal byte order) of the block at key height `RandomXKeyHeight(h)`; see "Key rotation" below |
 | Input | the 80 serialized header bytes, nonce included |
 | Output to target | the 32-byte RandomX hash read as a little-endian 256-bit integer (the same convention as a SHA-256d block hash), compared to the `nBits` target |
 | Activation | buried deployment `randomx` (`Consensus::DEPLOYMENT_RANDOMX`, shown by `getdeploymentinfo`): height **0 on regtest and `qtctest`**, never (`INT_MAX`) on mainnet, testnet, testnet4 and signet, so the Bitcoin chains are unaffected. Regtest override: `-testactivationheight=randomx@<n>` |
 | Below the height | double SHA-256 (the block hash), as before |
 | At and above the height | RandomX is the only accepted proof of work; a header that meets the target only under SHA-256d is rejected with `high-hash` |
 | Genesis | exempt once the height is 0 (its hash is fixed by an assertion in the chain parameters) |
-| Verification | light mode: a 256 MiB cache built on first use (about a second), one virtual machine per thread, JIT and hardware AES when the CPU has them (the hash is identical either way). Chains that never reach RandomX allocate nothing |
+| Verification | light mode: a 256 MiB cache per key, built on first use (about a second) and kept for the two most recently used keys, one virtual machine per thread, JIT and hardware AES when the CPU has them (the hash is identical either way). Chains that never reach RandomX allocate nothing |
 | Cost | about 20 ms per hash in light mode on one thread here (about 256 hashes per qtctest block, 118 s for 20 blocks). `AcceptBlockHeader` and the headers anti-DoS pre-check stop at the first invalid header, so an invalid header costs one hash. A RandomX proof is not recomputed when the block index is loaded or a block is read from disk (the SHA-256d check still is, below the height) |
 
-Where the check happens: `CheckBlockHeaderPoW` (`src/pow.cpp`) at `AcceptBlockHeader` with height `parent + 1`
+Where the check happens: `CheckBlockHeaderPoW` (`src/pow.cpp`, given a key lookup) at `AcceptBlockHeader` with height `parent + 1`
 (the context-free `CheckBlock` check is skipped on chains where RandomX can activate), at the headers
-pre-check in `net_processing` (height known from the first header's parent; if the parent is unknown, a
-header is accepted if it satisfies any hash function possible on the chain), and in `generatetoaddress` /
+pre-check in `net_processing` (height and key from the first header's parent; if the parent is unknown, see
+"Key rotation"), in headers presync (`HeadersSyncState`), and in `generatetoaddress` /
 `generateblock` (`GenerateBlock`, light mode, single thread). `getblocktemplate` reports `"powalgo":
 "randomx"` or `"sha256d"` for the template's height.
 
+### Key rotation
+
+Consensus parameters `nRandomXKeyEpoch` = 2048 (a power of two) and `nRandomXKeyLag` = 64, the same for every chain.
+For a block at height *h*:
+
+```
+key_height(h) = 0                                   if h <= 2048 + 64
+              = (h - 64 - 1) & ~(2048 - 1)           otherwise      (round down to a multiple of 2048)
+key(h)        = block identifier at key_height(h) on the chain being extended, 32 raw bytes in internal order
+```
+
+So blocks 1-2112 use the genesis block's identifier, blocks 2113-4160 use the identifier of block 2048, blocks
+4161-6208 that of block 4096, and so on. The 64-block lag buries a key block before it is used, so a short reorg at an
+epoch start does not change the key of the next epoch; a reorg deeper than the lag switches to the other chain's key
+block, as the chain it belongs to requires. A different genesis gives a different key, so chains never share one.
+The key is a function of the chain, not of the header, so every check has to be given the chain:
+- `AcceptBlockHeader` resolves the key block through the parent (`CBlockIndex::GetAncestor`).
+- The headers pre-check in `net_processing` takes the key block from the first header's parent or, when the key
+  height lies inside the batch, from the batch itself. If the first parent is unknown only the `nBits` range is
+  checked (SHA-256d heights are still fully checked).
+- Headers presync (`HeadersSyncState`) holds chains that are not in the block index, so it verifies each RandomX
+  proof itself and records the identifier of every header at a multiple of 2048 (one entry per 2048 headers) as the
+  key block of later headers; key blocks before the sync's start come from the last known header.
+- `generatetoaddress` / `generateblock` resolve the key once per block; `getblocktemplate` returns it as
+  `randomxkey` (hex, the raw bytes to pass to the scanner) and `randomxkeyheight` next to `"powalgo": "randomx"`.
+- The node keeps the caches of the two most recently used keys (2 x 256 MiB), so the epoch boundary and a
+  reorg across it do not rebuild a cache each time; an evicted cache is freed once its last user finishes.
+- `fork/test/regtest_randomx_epoch.sh` mines across the first boundary (heights 2111-2133): the template key changes
+  from the genesis block to block 2048, a header valid only under the old key is rejected at height 2113, blocks
+  and an ML-DSA spend confirm on the new key, restart and `-reindex` cross the boundary, and a second node with
+  `-minimumchainwork` set so that its presync spans the boundary syncs.
+
 Known limits of this design, to settle before a public launch:
-- the key never rotates, so a full dataset can be built once and reused forever; Monero rotates the key
-  every 2048 blocks (with a 64-block lag) to bound that. A rotation rule needs a key-block lookup in the
-  chain context.
+- the key rotation protects against a dataset that is built once and reused, but a miner can still prepare the
+  next epoch's dataset in advance (the key block is known 64 blocks before it is used, as in Monero).
+- a header whose parent is unknown is only range-checked during the pre-check; the real proof is checked when
+  its chain is accepted (or, for a presync chain, as it is processed).
 - light-mode verification is the only mode in the node; a full-dataset verifier would speed up initial
   block download at 2 GiB of memory.
 - the upstream unit and functional tests mine regtest blocks with SHA-256d and no longer work on regtest
@@ -238,7 +271,8 @@ Build the node and the scanner: `cmake --build build --target bitcoind bitcoin-c
    python3 fork/tools/qtc-gbt-miner.py --address "$M" --chain qtctest --procs 16 --fast --blocks 200   # 2 GiB dataset
    ```
    `qtc-randomx-scan HEADER76_HEX TARGET64_HEX START STRIDE [MAXCOUNT]` is the building block for other miners:
-   same arguments as `qtc-nonce-scan`, RandomX instead of SHA-256d (`QTC_RX_THREADS`, `QTC_RX_FAST=1`);
+   same arguments as `qtc-nonce-scan`, RandomX instead of SHA-256d, keyed with the template's `randomxkey` in the
+   environment (`QTC_RX_KEY`, required; also `QTC_RX_THREADS`, `QTC_RX_FAST=1`);
    `qtc-randomx-scan --selftest` checks the RandomX known-answer vector.
 3. Regtest and the activation height: `fork/test/regtest_randomx.sh` mines under RandomX, checks a mined nonce
    with the independent scanner, confirms an ML-DSA spend, and with `-testactivationheight=randomx@10` shows

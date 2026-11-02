@@ -414,7 +414,7 @@ BlockValidationState TestBlockValidity(
     bool check_merkle_root) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
 /** Check that the proof of work on each blockheader matches the value in nBits */
-bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, std::optional<int> first_height = std::nullopt);
+bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, const CBlockIndex* first_parent = nullptr);
 
 /** Check if a block has been mutated (with respect to its merkle root and witness commitments). */
 bool IsBlockMutated(const CBlock& block, bool check_witness_root);

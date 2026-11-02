@@ -127,6 +127,11 @@ struct Params {
      * target as before) instead of double SHA-256. 0 on regtest and qtctest; INT_MAX (never) on the Bitcoin
      * chains kept in this tree, so they are unaffected. Override: -testactivationheight=randomx@<n> on regtest. */
     int RandomXHeight{std::numeric_limits<int>::max()};
+    /** Qcoin: the RandomX key changes every nRandomXKeyEpoch blocks (a power of two, 2048 as in Monero). A block at
+     * height h is hashed with the key = identifier of the block at RandomXKeyHeight(h): the epoch start that is at
+     * least nRandomXKeyLag + 1 blocks behind h (lag 64 as in Monero), so the key block is buried before it is used. */
+    int nRandomXKeyEpoch{2048};
+    int nRandomXKeyLag{64};
     /** Qcoin: maximum block weight (BIP 141 units). 4,000,000 on the Bitcoin chains kept in this tree,
      * QCOIN_MAX_BLOCK_WEIGHT (8,000,000) on the Qcoin chains, because a witness v2 spend carries a 3.7 kB signature. */
     unsigned int nMaxBlockWeight{4'000'000};

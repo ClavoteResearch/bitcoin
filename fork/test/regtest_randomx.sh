@@ -25,6 +25,8 @@ start() { "$BIN/bitcoind" -regtest -datadir="$D" -daemon -fallbackfee=0.0001 -rp
 stop() { $CLI stop >/dev/null 2>&1; for i in $(seq 1 60); do pgrep -f "datadir=$D" >/dev/null || break; sleep 1; done; }
 CLI="$BIN/bitcoin-cli -regtest -datadir=$D -rpcport=$RPCPORT"
 trap 'stop; rm -rf "$D"' EXIT
+# RandomX key of every block below height 2113: the genesis block identifier, raw bytes in internal order (hex)
+gkey() { py 'import sys; print(bytes.fromhex(sys.argv[1])[::-1].hex())' "$($CLI getblockhash 0)"; }
 dep() { $CLI getdeploymentinfo | py 'import sys,json; d=json.load(sys.stdin)["deployments"]["randomx"]; print(d["type"], d["active"], d.get("height"))'; }
 
 say "== 1. regtest: RandomX from genesis =="
@@ -32,6 +34,7 @@ say "scanner self-test: $("$SCAN" --selftest | tr '\n' ' ')"
 check "$("$SCAN" --selftest | grep -c 'ok)')" "1" "RandomX known-answer vector"
 start
 check "$(dep)" "buried True 0" "randomx deployment is buried and active from height 0"
+GK=$(gkey)
 $CLI createwallet w >/dev/null
 W="$CLI -rpcwallet=w"
 M=$($W getnewmldsaaddress mine)
@@ -42,7 +45,7 @@ HDR=$($CLI getblockheader "$TIPH" false)
 TARGET=$($CLI getblockheader "$TIPH" | py 'import sys,json; print(json.load(sys.stdin)["target"])')
 NONCE=$($CLI getblockheader "$TIPH" | py 'import sys,json; print(json.load(sys.stdin)["nonce"])')
 check "${#HDR}" "160" "block header is 80 bytes"
-check "$(QTC_RX_THREADS=1 "$SCAN" "${HDR:0:152}" "$TARGET" "$NONCE" 1 1)" "$NONCE" "independent RandomX evaluation accepts the mined header's nonce"
+check "$(QTC_RX_KEY=$GK QTC_RX_THREADS=1 "$SCAN" "${HDR:0:152}" "$TARGET" "$NONCE" 1 1)" "$NONCE" "independent RandomX evaluation accepts the mined header's nonce"
 B=$($W getnewmldsaaddress dest)
 TX=$($W sendtoaddress "$B" 1.0)
 check "${#TX}" "64" "ML-DSA spend accepted"
@@ -54,6 +57,7 @@ say "== 2. -testactivationheight=randomx@10: SHA-256d below, RandomX from 10 =="
 rm -rf "$D"; mkdir -p "$D"
 start -testactivationheight=randomx@10
 check "$(dep)" "buried False 10" "randomx activates at height 10 (inactive at the genesis tip)"
+GK=$(gkey)
 $CLI createwallet w >/dev/null
 M=$($W getnewmldsaaddress mine)
 $CLI generatetoaddress 8 "$M" >/dev/null
@@ -64,8 +68,8 @@ check "$(dep)" "buried True 10" "randomx active for the next block (height 10)"
 TIPH=$($CLI getbestblockhash)
 HDR=$($CLI getblockheader "$TIPH" false)
 TARGET=$($CLI getblockheader "$TIPH" | py 'import sys,json; print(json.load(sys.stdin)["target"])')
-SHAONLY=$(python3 -I "$HERE/randomx_headers.py" craft "$HDR" "$SCAN" "$TARGET" sha-only)
-RXOK=$(python3 -I "$HERE/randomx_headers.py" craft "$HDR" "$SCAN" "$TARGET" randomx)
+SHAONLY=$(python3 -I "$HERE/randomx_headers.py" craft "$HDR" "$SCAN" "$TARGET" sha-only "$GK")
+RXOK=$(python3 -I "$HERE/randomx_headers.py" craft "$HDR" "$SCAN" "$TARGET" randomx "$GK")
 R=$($CLI submitheader "$SHAONLY" 2>&1) || true
 check "$(printf '%s' "$R" | grep -c 'high-hash')" "1" "height 10: a header that only meets the target under SHA-256d is rejected (high-hash)"
 R=$($CLI submitheader "$RXOK" 2>&1) || true
@@ -73,7 +77,7 @@ check "${#R}" "0" "height 10: a header that meets the target under RandomX is ac
 $CLI generatetoaddress 6 "$M" >/dev/null
 check "$($CLI getblockcount)" "15" "6 more blocks (heights 10-15) mined under RandomX"
 H10=$($CLI getblockhash 10)
-check "$(QTC_RX_THREADS=1 "$SCAN" "$($CLI getblockheader "$H10" false | cut -c1-152)" "$TARGET" "$($CLI getblockheader "$H10" | py 'import sys,json; print(json.load(sys.stdin)["nonce"])')" 1 1)" "$($CLI getblockheader "$H10" | py 'import sys,json; print(json.load(sys.stdin)["nonce"])')" "block 10 satisfies RandomX"
+check "$(QTC_RX_KEY=$GK QTC_RX_THREADS=1 "$SCAN" "$($CLI getblockheader "$H10" false | cut -c1-152)" "$TARGET" "$($CLI getblockheader "$H10" | py 'import sys,json; print(json.load(sys.stdin)["nonce"])')" 1 1)" "$($CLI getblockheader "$H10" | py 'import sys,json; print(json.load(sys.stdin)["nonce"])')" "block 10 satisfies RandomX"
 
 say "== 3. restart and reindex across the transition =="
 stop

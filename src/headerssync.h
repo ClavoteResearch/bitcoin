@@ -15,6 +15,7 @@
 #include <util/hasher.h>
 
 #include <deque>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
@@ -248,6 +249,10 @@ private:
      * Any peer giving us more headers than this will have its sync aborted. This serves as a
      * memory bound on m_header_commitments. */
     uint64_t m_max_commitments{0};
+
+    /** Qcoin: identifiers of the headers received at multiples of the RandomX key epoch during presync (the key blocks
+     *  of later headers), so the proof of work of a chain outside the block index can be checked. */
+    std::map<int, uint256> m_randomx_key_blocks;
 
     /** Store the latest header received while in PRESYNC (initialized to m_chain_start) */
     CBlockHeader m_last_header_received;

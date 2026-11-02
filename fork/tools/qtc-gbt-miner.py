@@ -10,7 +10,8 @@ RandomX: when the template says "powalgo": "randomx" (heights from Consensus::Pa
 regtest and qtctest) the 80-byte header is hashed with RandomX instead and the miner needs the native scanner
 qtc-randomx-scan (cmake --build <dir> --target qtc-randomx-scan; it is looked for next to this script, in ./build/bin and
 in ../../build/bin, or give --randomx-scanner). --fast uses the 2 GiB dataset (about ten times the hash rate after a start-up
-of tens of seconds). The block hash and the layout of the header are unchanged; only the proof-of-work hash differs.
+of tens of seconds). The scanner is keyed with the template's "randomxkey" (it changes every 2048 blocks). The block
+hash and the layout of the header are unchanged; only the proof-of-work hash differs.
 
     qtc-gbt-miner.py --address tq1z... [--chain qtctest] [--datadir ~/.bitcoin] [--rpcurl http://127.0.0.1:28332]
                      [--rpcuser U --rpcpassword P] [--procs N] [--blocks N | --until-height H]
@@ -170,18 +171,18 @@ RX_SCANNER = None   # path of the native qtc-randomx-scan helper (needed when th
 RX_FAST = False
 
 
-def solve_randomx(h76, target, nproc):
+def solve_randomx(h76, target, nproc, key_hex):
     """One qtc-randomx-scan process with nproc threads (it shares the RandomX cache or dataset between them)."""
     if not RX_SCANNER:
         sys.exit("the template needs RandomX proof of work: build qtc-randomx-scan and pass --randomx-scanner")
-    env = dict(os.environ, QTC_RX_THREADS=str(nproc), QTC_RX_FAST="1" if RX_FAST else "0")
+    env = dict(os.environ, QTC_RX_THREADS=str(nproc), QTC_RX_FAST="1" if RX_FAST else "0", QTC_RX_KEY=key_hex)
     out = subprocess.check_output([RX_SCANNER, h76.hex(), "%064x" % target, "0", "1"], env=env, text=True).strip()
     return int(out) if out.isdigit() else None
 
 
-def solve(h76, target, nproc, algo="sha256d"):
+def solve(h76, target, nproc, algo="sha256d", key_hex=""):
     if algo == "randomx":
-        return solve_randomx(h76, target, nproc)
+        return solve_randomx(h76, target, nproc, key_hex)
     if SCANNER:
         return solve_native(h76, target, nproc)
     ctx = mp.get_context("fork")
@@ -211,7 +212,7 @@ def mine_one(rpc, spk, nproc, extranonce_counter):
         h76 = struct.pack("<I", t["version"]) + bytes.fromhex(t["previousblockhash"])[::-1] + root + struct.pack("<II", ntime, int(t["bits"], 16))
         target = int(t["target"], 16)
         s0 = time.time()
-        nonce = solve(h76, target, nproc, t.get("powalgo", "sha256d"))
+        nonce = solve(h76, target, nproc, t.get("powalgo", "sha256d"), t.get("randomxkey", ""))
         if nonce is not None: break
         extranonce_counter += 1   # nonce space exhausted: roll the extranonce
     header = h76 + struct.pack("<I", nonce)

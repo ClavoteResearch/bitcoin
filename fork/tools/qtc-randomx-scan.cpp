@@ -8,7 +8,9 @@
 // the first nonce whose hash, read as a little-endian 256-bit number like a block hash, is at or below the target, or
 // "none". With MAXCOUNT it stops after that many tries per thread and prints "none <hashes_per_second>" (a benchmark).
 //
-// Environment: QTC_RX_THREADS=<n> (default: all hardware threads), QTC_RX_FAST=1 (use the 2 GiB dataset: about
+// Environment: QTC_RX_KEY=<hex> (required: the RandomX key of the block being mined, i.e. the "randomxkey" field of the
+// getblocktemplate result: the identifier of the key block as 32 raw bytes in internal order, hex),
+// QTC_RX_THREADS=<n> (default: all hardware threads), QTC_RX_FAST=1 (use the 2 GiB dataset: about
 // ten times the hash rate after a start-up of tens of seconds; default is the 256 MiB cache, which is what nodes use).
 // The thread t of n scans START + t*STRIDE, START + (t+n)*STRIDE, ...
 // --selftest checks the RandomX known-answer vector of the upstream test suite (key "test key 000", input "This is a test").
@@ -59,13 +61,19 @@ int SelfTest()
     randomx_release_cache(cache);
     const bool ok = std::strcmp(got, want) == 0;
     std::printf("randomx known answer: %s (%s)\n", got, ok ? "ok" : "MISMATCH");
-    // The chain key must also hash deterministically through the node's wrapper.
-    unsigned char a[32], b[32];
+    // The node's wrapper must agree with the library and keep keys apart: same key and input, same hash; another
+    // key, another hash; and the known-answer vector again through the wrapper.
+    unsigned char a[32], b[32], c[32], d[32];
     const unsigned char hdr[80] = {1};
-    qcoin::pow::RandomXHash(hdr, sizeof(hdr), a);
-    qcoin::pow::RandomXHash(hdr, sizeof(hdr), b);
-    const bool det = std::memcmp(a, b, 32) == 0;
-    std::printf("node wrapper deterministic: %s\n", det ? "ok" : "MISMATCH");
+    const unsigned char key1[32] = {1}, key2[32] = {2};
+    qcoin::pow::RandomXHash(key1, sizeof(key1), hdr, sizeof(hdr), a);
+    qcoin::pow::RandomXHash(key2, sizeof(key2), hdr, sizeof(hdr), c);
+    qcoin::pow::RandomXHash(key1, sizeof(key1), hdr, sizeof(hdr), b);
+    qcoin::pow::RandomXHash(reinterpret_cast<const unsigned char*>(key), sizeof(key) - 1, reinterpret_cast<const unsigned char*>(input), sizeof(input) - 1, d);
+    char got2[65];
+    for (int i = 0; i < 32; ++i) std::snprintf(got2 + 2 * i, 3, "%02x", d[i]);
+    const bool det = std::memcmp(a, b, 32) == 0 && std::memcmp(a, c, 32) != 0 && std::strcmp(got2, want) == 0;
+    std::printf("node wrapper: deterministic, key-dependent, known answer: %s\n", det ? "ok" : "MISMATCH");
     return ok && det ? 0 : 1;
 }
 
@@ -88,11 +96,18 @@ int main(int argc, char** argv)
     if (nthreads == 0) nthreads = 1;
     const bool fast = std::getenv("QTC_RX_FAST") && std::strcmp(std::getenv("QTC_RX_FAST"), "1") == 0;
 
+    const char* key_env = std::getenv("QTC_RX_KEY");
+    if (!key_env || std::strlen(key_env) == 0 || std::strlen(key_env) % 2) {
+        std::fprintf(stderr, "set QTC_RX_KEY to the block template's randomxkey (hex)\n");
+        return 2;
+    }
+    std::vector<unsigned char> rx_key;
+    for (size_t i = 0; i + 1 < std::strlen(key_env) + 1 && key_env[i]; i += 2) rx_key.push_back(static_cast<unsigned char>(Hv(key_env[i]) << 4 | Hv(key_env[i + 1])));
     randomx_flags flags = static_cast<randomx_flags>(randomx_get_flags() & ~(RANDOMX_FLAG_FULL_MEM | RANDOMX_FLAG_LARGE_PAGES));
     randomx_cache* cache = randomx_alloc_cache(flags);
     if (!cache) { flags = RANDOMX_FLAG_DEFAULT; cache = randomx_alloc_cache(flags); }
     if (!cache) { std::fprintf(stderr, "cannot allocate the RandomX cache\n"); return 1; }
-    randomx_init_cache(cache, qcoin::pow::RANDOMX_KEY, qcoin::pow::RANDOMX_KEY_LEN);
+    randomx_init_cache(cache, rx_key.data(), rx_key.size());
     randomx_dataset* dataset = nullptr;
     if (fast) {
         dataset = randomx_alloc_dataset(RANDOMX_FLAG_DEFAULT);

@@ -9,11 +9,12 @@
 #include <consensus/params.h>
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <uint256.h>
 
 class CBlockHeader;
 class CBlockIndex;
-class uint256;
 class arith_uint256;
 
 /**
@@ -34,18 +35,32 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&);
 
 /**
- * Qcoin: the proof-of-work hash of a header at the given height: the double SHA-256 (the block hash) below
- * Consensus::Params::RandomXHeight, RandomX over the 80 serialized header bytes at and above it. Throws
- * std::runtime_error if RandomX is needed and cannot allocate its cache.
+ * Qcoin: height of the block whose identifier is the RandomX key for a block at `height`: 0 (the genesis block)
+ * while height <= epoch + lag, otherwise the epoch start (height - lag - 1) rounded down to a multiple of the
+ * epoch. With the defaults (2048, 64): blocks 1-2112 use the genesis hash, 2113-4160 the hash of block 2048,
+ * 4161-6208 the hash of block 4096, and so on (Monero's seed-height rule).
  */
-uint256 GetBlockPoWHash(const CBlockHeader& header, const Consensus::Params&, int height);
+int RandomXKeyHeight(const Consensus::Params& params, int height);
+/** Returns the identifier of the block at a key height on the chain being extended, or nullopt if unknown. */
+using RandomXKeyLookup = std::function<std::optional<uint256>(int key_height)>;
+/** Key lookup along the chain that ends at `prev` (the parent of the block being checked). */
+RandomXKeyLookup RandomXKeyLookupFromIndex(const CBlockIndex* prev);
+
+/**
+ * Qcoin: the proof-of-work hash of a header at the given height: the double SHA-256 (the block hash) below
+ * Consensus::Params::RandomXHeight, RandomX over the 80 serialized header bytes at and above it, keyed with the
+ * identifier of the block at RandomXKeyHeight (32 raw bytes in internal order). Throws std::runtime_error if
+ * RandomX is needed and the key block is unknown or RandomX cannot allocate its cache.
+ */
+uint256 GetBlockPoWHash(const CBlockHeader& header, const Consensus::Params&, int height, const RandomXKeyLookup& key_lookup);
 /**
  * Qcoin: check a header's proof of work at the given height (nBits range, target comparison). The genesis block
- * is exempt once RandomX applies to height 0. With no height (headers whose parent is unknown, used only for the
- * anti-DoS pre-check of a headers message) the header is accepted if it satisfies the hash function of any height
- * that is possible on this chain.
+ * is exempt once RandomX applies to height 0. A RandomX height whose key block is unknown fails. With no height
+ * (headers whose parent is unknown, used only for the anti-DoS pre-check of a headers message) a header is
+ * accepted if it satisfies SHA-256d where that is possible on this chain, and otherwise if its nBits are valid:
+ * without the parent the key cannot be known, and headers syncing verifies the real proof itself.
  */
-bool CheckBlockHeaderPoW(const CBlockHeader& header, std::optional<int> height, const Consensus::Params&);
+bool CheckBlockHeaderPoW(const CBlockHeader& header, std::optional<int> height, const Consensus::Params&, const RandomXKeyLookup& key_lookup);
 bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Params&);
 
 /**

@@ -171,11 +171,18 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
 
     // Qcoin: the proof-of-work hash depends on the height of the block being mined (SHA-256d or RandomX)
     int pow_height{0};
+    RandomXKeyLookup key_lookup;
     {
         LOCK(cs_main);
-        if (const CBlockIndex* prev{chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock)}) pow_height = prev->nHeight + 1;
+        if (const CBlockIndex* prev{chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock)}) {
+            pow_height = prev->nHeight + 1;
+            // the key block is an ancestor of the parent: resolve it once, outside the nonce loop
+            const std::optional<uint256> key{RandomXKeyLookupFromIndex(prev)(RandomXKeyHeight(chainman.GetConsensus(), pow_height))};
+            const int key_height{RandomXKeyHeight(chainman.GetConsensus(), pow_height)};
+            key_lookup = [key, key_height](int h) -> std::optional<uint256> { return h == key_height ? key : std::nullopt; };
+        }
     }
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckBlockHeaderPoW(block, pow_height, chainman.GetConsensus()) && !chainman.m_interrupt) {
+    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckBlockHeaderPoW(block, pow_height, chainman.GetConsensus(), key_lookup) && !chainman.m_interrupt) {
         ++block.nNonce;
         --max_tries;
     }
@@ -1048,6 +1055,15 @@ static RPCMethod getblocktemplate()
     result.pushKV("target", hashTarget.GetHex());
     // Qcoin: which hash function proves this template's block (the 80-byte header is hashed either way)
     result.pushKV("powalgo", pindexPrev->nHeight + 1 >= consensusParams.RandomXHeight ? "randomx" : "sha256d");
+    if (pindexPrev->nHeight + 1 >= consensusParams.RandomXHeight) {
+        // RandomX key for this template: the identifier of the key block, 32 raw bytes in internal byte order (hex)
+        const int key_height{RandomXKeyHeight(consensusParams, pindexPrev->nHeight + 1)};
+        if (const CBlockIndex* key_block{pindexPrev->GetAncestor(key_height)}) {
+            const uint256 key_hash{key_block->GetBlockHash()};
+            result.pushKV("randomxkey", HexStr(std::span<const unsigned char>(key_hash.begin(), key_hash.size())));
+            result.pushKV("randomxkeyheight", key_height);
+        }
+    }
     result.pushKV("mintime", GetMinimumTime(pindexPrev, consensusParams.DifficultyAdjustmentInterval()));
     result.pushKV("mutable", std::move(aMutable));
     result.pushKV("noncerange", "00000000ffffffff");
