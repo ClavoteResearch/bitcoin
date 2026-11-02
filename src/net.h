@@ -62,8 +62,8 @@ inline constexpr std::chrono::minutes TIMEOUT_INTERVAL{20};
 inline constexpr auto FEELER_INTERVAL = 2min;
 /** Run the extra block-relay-only connection loop once every 5 minutes. **/
 inline constexpr auto EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL = 5min;
-/** Maximum length of incoming protocol messages (no message over 4 MB is currently acceptable). */
-inline constexpr unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = 4 * 1000 * 1000;
+/** Maximum length of incoming protocol messages (no message over 8 MB is currently acceptable: a Qcoin block of 8 MWU is up to 8,000,000 bytes). */
+inline constexpr unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = 8 * 1000 * 1000;
 /** Maximum length of the user agent string in `version` message */
 inline constexpr unsigned int MAX_SUBVERSION_LENGTH = 256;
 /** Maximum number of automatic outgoing nodes over which we'll relay everything (blocks, tx, addrs, etc) */

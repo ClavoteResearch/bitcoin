@@ -9,10 +9,15 @@
 #include <cstddef>
 #include <cstdint>
 
-/** The maximum allowed size for a serialized block, in bytes (only for buffer size limits) */
-inline constexpr unsigned int MAX_BLOCK_SERIALIZED_SIZE{4'000'000};
-/** The maximum allowed weight for a block, see BIP 141 (network rule) */
+/** The maximum allowed size for a serialized block, in bytes (only for buffer size limits; covers the largest Qcoin block) */
+inline constexpr unsigned int MAX_BLOCK_SERIALIZED_SIZE{8'000'000};
+/** The maximum allowed weight for a block on the Bitcoin chains, see BIP 141 (network rule). Chains read their own limit from Consensus::Params::nMaxBlockWeight. */
 inline constexpr unsigned int MAX_BLOCK_WEIGHT{4'000'000};
+/** Qcoin: block weight limit of the ML-DSA-only chains (regtest, qtctest). A witness v2 key-path spend is about 3.9k WU
+ *  (about 1048 vB per transaction with change), so 8 MWU holds about 1950 of them, twice what 4 MWU does. */
+inline constexpr unsigned int QCOIN_MAX_BLOCK_WEIGHT{8'000'000};
+/** Upper bound of every chain's block weight; use for static sanity bounds that have no chain parameters at hand. */
+inline constexpr unsigned int MAX_BLOCK_WEIGHT_CEILING{QCOIN_MAX_BLOCK_WEIGHT};
 /** The maximum allowed number of signature check operations in a block (network rule) */
 inline constexpr int64_t MAX_BLOCK_SIGOPS_COST{80'000};
 /** Coinbase transaction outputs can only be spent after this number of new blocks (network rule) */

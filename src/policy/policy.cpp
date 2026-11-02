@@ -52,7 +52,11 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     // satisfaction is lower (a single BIP340 signature) but this computation was
     // kept to not further reduce the dust level.
     // See discussion in https://github.com/bitcoin/bitcoin/pull/22779 for details.
-    if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
+    if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram) && witnessversion == 2 && witnessprogram.size() == 32) {
+        // Qcoin: a witness v2 ML-DSA output is spent with a ~3.7 kB witness (public key + signature), so spending it
+        // costs about 976 vB, not the 68 vB the P2WPKH formula assumes. Same shape as the segwit case below.
+        nSize += (32 + 4 + 1 + (MLDSA_V2_SPEND_WITNESS_BYTES / WITNESS_SCALE_FACTOR) + 4);
+    } else if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
         // sum the sizes of the parts of a transaction input
         // with 75% segwit discount applied to the script size.
         nSize += (32 + 4 + 1 + (107 / WITNESS_SCALE_FACTOR) + 4);

@@ -35,15 +35,15 @@ Result<void> CheckMiningOptions(BlockCreateOptions options, bool use_argnames)
                                             use_argnames ? "-blockreservedweight" : "block_reserved_weight",
                                             *options.block_reserved_weight, MINIMUM_BLOCK_RESERVED_WEIGHT))};
     }
-    if (*options.block_reserved_weight > MAX_BLOCK_WEIGHT) {
+    if (*options.block_reserved_weight > MAX_BLOCK_WEIGHT_CEILING) {
         return Error{Untranslated(strprintf("%s (%d) exceeds consensus maximum block weight (%d)",
                                             use_argnames ? "-blockreservedweight" : "block_reserved_weight",
-                                            *options.block_reserved_weight, MAX_BLOCK_WEIGHT))};
+                                            *options.block_reserved_weight, MAX_BLOCK_WEIGHT_CEILING))};
     }
-    if (*options.block_max_weight > MAX_BLOCK_WEIGHT) {
+    if (*options.block_max_weight > MAX_BLOCK_WEIGHT_CEILING) {
         return Error{Untranslated(strprintf("%s (%d) exceeds consensus maximum block weight (%d)",
                                             use_argnames ? "-blockmaxweight" : "block_max_weight",
-                                            *options.block_max_weight, MAX_BLOCK_WEIGHT))};
+                                            *options.block_max_weight, MAX_BLOCK_WEIGHT_CEILING))};
     }
     if (*options.block_reserved_weight > *options.block_max_weight) {
         return Error{Untranslated(strprintf("%s (%d) exceeds %s (%d)",

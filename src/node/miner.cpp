@@ -107,6 +107,11 @@ BlockAssembler::BlockAssembler(Chainstate& chainstate,
           if (auto result{CheckMiningOptions(options, /*use_argnames=*/false)}; !result) {
               throw std::runtime_error(util::ErrorString(result).original);
           }
+          const uint64_t chain_max_weight{chainstate.m_chainman.GetConsensus().nMaxBlockWeight};
+          if (options.block_max_weight && *options.block_max_weight > chain_max_weight) {
+              throw std::runtime_error(strprintf("block_max_weight (%d) exceeds this chain's maximum block weight (%d)", *options.block_max_weight, chain_max_weight));
+          }
+          if (!options.block_max_weight) options.block_max_weight = chain_max_weight;
           return FlattenMiningOptions(std::move(options));
       }()}
 {

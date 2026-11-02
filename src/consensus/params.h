@@ -120,6 +120,9 @@ struct Params {
      * in this tree, true on the Qcoin chains (regtest, qtctest).
      */
     bool fMlDsaOnlyValue{false};
+    /** Qcoin: maximum block weight (BIP 141 units). 4,000,000 on the Bitcoin chains kept in this tree,
+     * QCOIN_MAX_BLOCK_WEIGHT (8,000,000) on the Qcoin chains, because a witness v2 spend carries a 3.7 kB signature. */
+    unsigned int nMaxBlockWeight{4'000'000};
     /** Don't warn about unknown BIP 9 activations below this height.
      * This prevents us from warning about the CSV, segwit and taproot activations. */
     int MinBIP9WarningHeight;

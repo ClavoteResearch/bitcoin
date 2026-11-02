@@ -1044,7 +1044,7 @@ static RPCMethod getblocktemplate()
     result.pushKV("mutable", std::move(aMutable));
     result.pushKV("noncerange", "00000000ffffffff");
     int64_t nSigOpLimit = MAX_BLOCK_SIGOPS_COST;
-    int64_t nSizeLimit = MAX_BLOCK_SERIALIZED_SIZE;
+    int64_t nSizeLimit = consensusParams.nMaxBlockWeight;
     if (fPreSegWit) {
         CHECK_NONFATAL(nSigOpLimit % WITNESS_SCALE_FACTOR == 0);
         nSigOpLimit /= WITNESS_SCALE_FACTOR;
@@ -1054,7 +1054,7 @@ static RPCMethod getblocktemplate()
     result.pushKV("sigoplimit", nSigOpLimit);
     result.pushKV("sizelimit", nSizeLimit);
     if (!fPreSegWit) {
-        result.pushKV("weightlimit", MAX_BLOCK_WEIGHT);
+        result.pushKV("weightlimit", consensusParams.nMaxBlockWeight);
     }
     result.pushKV("curtime", block_header.GetBlockTime());
     result.pushKV("bits", strprintf("%08x", block_header.nBits));

@@ -66,6 +66,9 @@ inline constexpr unsigned int MAX_STANDARD_SCRIPTSIG_SIZE{1650};
  * only increase the dust limit after prior releases were already not creating
  * outputs below the new threshold */
 inline constexpr unsigned int DUST_RELAY_TX_FEE{3000};
+/** Qcoin: witness bytes of a witness v2 ML-DSA-44 key-path spend: item count (1) + length varint (3) + attestation
+ * (3 header bytes, 1312-byte public key, 2420-byte signature = 3735). Used for the dust threshold. */
+inline constexpr unsigned int MLDSA_V2_SPEND_WITNESS_BYTES{1 + 3 + 3 + 1312 + 2420};
 /** Default for -minrelaytxfee, minimum relay fee for transactions */
 inline constexpr unsigned int DEFAULT_MIN_RELAY_TX_FEE{100};
 /** Maximum number of transactions per cluster (default) */

@@ -7,6 +7,7 @@
 
 #include <chainparamsseeds.h>
 #include <consensus/amount.h>
+#include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/params.h>
 #include <crypto/hex_base.h>
@@ -608,6 +609,7 @@ public:
         consensus.SegwitHeight = 0; // Always active unless overridden
         consensus.MLDSAv2Height = 0; // Qcoin: always active on regtest unless overridden with -testactivationheight=mldsav2@<n>
         consensus.fMlDsaOnlyValue = true; // Qcoin: once mldsav2 is active, only ML-DSA outputs may carry value
+        consensus.nMaxBlockWeight = QCOIN_MAX_BLOCK_WEIGHT; // Qcoin: 8 MWU blocks for ~3.7 kB ML-DSA signatures
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 24 * 60 * 60; // one day
@@ -724,6 +726,7 @@ public:
         consensus.SegwitHeight = 0;
         consensus.MLDSAv2Height = 0; // Qcoin: witness v2 ML-DSA rules enforced from genesis
         consensus.fMlDsaOnlyValue = true; // Qcoin: only ML-DSA outputs may carry value (separate coin, not a Bitcoin soft fork)
+        consensus.nMaxBlockWeight = QCOIN_MAX_BLOCK_WEIGHT; // Qcoin: 8 MWU blocks for ~3.7 kB ML-DSA signatures
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256{"000000ffff000000000000000000000000000000000000000000000000000000"}; // nBits 0x1e00ffff
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks

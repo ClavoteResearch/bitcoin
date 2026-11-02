@@ -177,6 +177,51 @@ script-verify flag `SCRIPT_VERIFY_MLDSA_V2`:
   extras: the ML-DSA-87 `param_id` 0x7f and the `qcoin-v2-selftest` binary.
   The default build contains the complete v2 path.
 
+## Dust and block weight policy
+
+A witness v2 key-path spend carries a 3735-byte attestation (3 header bytes, the 1312-byte ML-DSA-44
+public key and the 2420-byte signature), 3739 witness bytes with the item count and length. One input
+therefore costs 3903 WU (976 vB), and a typical one-input, two-output payment is 1073 vB (measured by
+`regtest_v2_policy.sh`).
+
+| Setting | Bitcoin chains in the tree | Qcoin chains (regtest, `qtctest`) | Where |
+|---|---|---|---|
+| Block weight limit | 4,000,000 WU | **8,000,000 WU** | `Consensus::Params::nMaxBlockWeight`, set in `kernel/chainparams.cpp`; checked in `CheckBlock` and `ContextualCheckBlock` |
+| Blocks of v2 spends | about 950 | about 1,900 (the test mines and connects a 4.53 MWU block of 1,101 transactions) | |
+| Dust threshold, v2 output | 294 sat (P2WPKH formula) | **3,054 sat** at 3,000 sat/kvB: (43-byte output + 41-byte input + 934 witness vB) x 3 sat/B | `GetDustThreshold`, `MLDSA_V2_SPEND_WITNESS_BYTES` in `policy/policy.h` |
+| Sigop cost of a v2 spend | n/a | **0, unchanged** | `CountWitnessSigOps` only counts witness v0 |
+| Max standard transaction | 400,000 WU | 400,000 WU (about 100 key-path inputs) | `MAX_STANDARD_TX_WEIGHT`, unchanged |
+| P2P message limit | 4,000,000 B | 8,000,000 B on every chain (a full block is up to 8,000,000 bytes) | `MAX_PROTOCOL_MESSAGE_LENGTH` |
+
+Reasons for the numbers:
+
+- **Weight.** The attestation is witness data and already gets the 75% discount, yet a transaction is
+  still about 4.2 kWU, so a 4 MWU block holds only about 950 payments. 8 MWU holds about 1,900. This is
+  a consensus rule of the Qcoin chains only: every block-level check reads the limit from the chain
+  parameters, so the Bitcoin chains keep 4 MWU. Static sanity bounds with no chain parameters at hand
+  (coin-cache estimate, merkle block and compact block transaction counts, `bad-txns-oversize`) use
+  `MAX_BLOCK_WEIGHT_CEILING` (8 MWU); on a Bitcoin chain the block weight check still rejects anything
+  above 4 MWU. `getblocktemplate` reports the chain's `weightlimit`, the block assembler defaults to it,
+  and `-blockmaxweight` above the chain limit is refused.
+- **Dust.** An output is only worth relaying if spending it costs less than it holds. A v2 output needs
+  about 976 vB to spend, roughly fourteen times a P2WPKH output, so the P2WPKH threshold (294 sat) would
+  let through outputs that cost more to spend than they hold. Outputs below 3,054 sat at the default dust
+  relay fee are non-standard (`dust`). This is relay policy, not consensus.
+- **Sigops.** Not changed, on purpose. Verifying one ML-DSA-44 signature takes about as long as one
+  ECDSA verification (`fork/results/2026-11-01-qtctest-3node/bench/microbench.txt`), and every
+  verification needs a 3.7 kB signature in the block, so weight already limits verifications to about
+  2,000 per 8 MWU block against the 80,000 sigop cost limit. A sigop charge per v2 input would never
+  bind. Script-path spends are limited the same way (one signature per attestation entry, at most four
+  entries) plus the tapscript validation weight budget.
+- **Standard transaction size.** 400,000 WU allows about 100 key-path inputs, so consolidating coins is
+  limited to roughly 100 inputs per transaction. Left unchanged.
+
+Not covered: `-blockmaxweight` help text and fee estimation (`policy/fees/mempool_estimator.cpp`) still
+assume 4 MWU blocks, so fee estimates on a Qcoin chain assume half the real capacity (conservative).
+The Qt GUI network style is not wired for `qtctest`. The block-weight test runs on regtest because
+`qtctest` needs real proof of work for every block; both chains get the same limit.
+Test: `fork/test/regtest_v2_policy.sh`.
+
 ## Public launch
 
 Exact commands for the first public `qtctest` deployment: one seed node, a
