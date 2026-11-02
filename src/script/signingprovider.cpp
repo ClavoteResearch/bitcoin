@@ -58,6 +58,11 @@ bool HidingSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDs
     if (m_hide_secret) return false;
     return m_provider->GetMlDsaKey(pk_hash, key);
 }
+bool HidingSigningProvider::WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const
+{
+    if (m_hide_secret) return false;
+    return m_provider->WithMlDsaKey(pk_hash, use);
+}
 bool HidingSigningProvider::GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const
 {
     return m_provider->GetMlDsaScriptPaths(program, paths);
@@ -169,10 +174,19 @@ bool FlatSigningProvider::GetMlDsaPubKey(const std::vector<unsigned char>& progr
 }
 bool FlatSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const
 {
+    return WithMlDsaKey(pk_hash, [&key](const qcoin::pqc::MlDsaKeyPair& k) { key = k; });
+}
+bool FlatSigningProvider::WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const
+{
     const auto it = mldsa_keys.find(pk_hash);
-    if (it == mldsa_keys.end()) return false;
-    key = it->second;
-    return true;
+    if (it != mldsa_keys.end()) {
+        use(it->second);
+        return true;
+    }
+    for (const auto& source : mldsa_key_sources) {
+        if (source(pk_hash, use)) return true;
+    }
+    return false;
 }
 bool FlatSigningProvider::GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const
 {
@@ -192,6 +206,7 @@ FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
     aggregate_pubkeys.merge(b.aggregate_pubkeys);
     mldsa_pubkeys.merge(b.mldsa_pubkeys);
     mldsa_keys.merge(b.mldsa_keys);
+    mldsa_key_sources.insert(mldsa_key_sources.end(), b.mldsa_key_sources.begin(), b.mldsa_key_sources.end());
     mldsa_scriptpaths.merge(b.mldsa_scriptpaths);
     // We shouldn't be merging 2 different sessions, just overwrite with b's sessions.
     if (!musig2_secnonces) musig2_secnonces = b.musig2_secnonces;
@@ -379,6 +394,14 @@ bool MultiSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsa
 {
     for (const auto& provider: m_providers) {
         if (provider->GetMlDsaKey(pk_hash, key)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->WithMlDsaKey(pk_hash, use)) return true;
     }
     return false;
 }

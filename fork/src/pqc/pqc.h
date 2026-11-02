@@ -108,7 +108,11 @@ inline constexpr size_t SIGNATURE_CONTEXT_LEN = sizeof(SIGNATURE_CONTEXT) - 1;
 /** BIP param_id for a scheme: 0x01 for ML-DSA-44, 0x7f (experimental, not in the BIP) for ML-DSA-87, 0 for ECDSA. */
 uint8_t ParamIdFor(SigScheme scheme);
 
-/** Sign/verify with a FIPS 204 context string (pure mode). Empty ctx == MlDsaSign/MlDsaVerify. */
+/** Sign/verify with a FIPS 204 context string (pure mode). Empty ctx == MlDsaSign/MlDsaVerify.
+ * MlDsaSignCtx hands `sk` to liboqs as a pointer into the caller's memory (OQS_SIG_sign_with_ctx_str takes the key by pointer
+ * and does not copy it), so the only copy of the secret is the caller's. Callers lend the key for exactly this call through
+ * SigningProvider::WithMlDsaKey. liboqs itself unpacks the key into stack variables while signing and does not clear them
+ * (residual surface, doc/WALLET-PQC.md "Secret key exposure while signing"). */
 bool MlDsaSignCtx(SigScheme scheme, std::span<const uint8_t> sk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::vector<uint8_t>& sig);
 bool MlDsaVerifyCtx(SigScheme scheme, std::span<const uint8_t> pk, std::span<const uint8_t> msg, std::span<const uint8_t> ctx, std::span<const uint8_t> sig);
 

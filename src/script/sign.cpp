@@ -108,12 +108,6 @@ bool MutableTransactionSignatureCreator::CreateMlDsaAttestation(const SigningPro
         return false;
     }
     const auto& [param_id, pk] = *found;
-    qcoin::pqc::MlDsaKeyPair kp;
-    if (!provider.GetMlDsaKey(qcoin::v2::PubKeyHash(pk), kp)) {
-        LogInfo("Qcoin: provider has no ML-DSA secret key for witness v2 program %s", HexStr(program).substr(0, 16));
-        return false;
-    }
-    if (qcoin::pqc::ParamIdFor(kp.scheme) != param_id) return false;
     // BIP section 6: sighash is the BIP 341 hash, key path, SIGHASH_DEFAULT (v2 has no hashtype byte).
     if (!m_txdata || !m_txdata->m_bip341_taproot_ready || !m_txdata->m_spent_outputs_ready) return false;
     ScriptExecutionData execdata;
@@ -121,14 +115,25 @@ bool MutableTransactionSignatureCreator::CreateMlDsaAttestation(const SigningPro
     execdata.m_annex_present = false;
     uint256 sighash;
     if (!SignatureHashSchnorr(sighash, execdata, m_txto, nIn, SIGHASH_DEFAULT, SigVersion::TAPROOT, *m_txdata, MissingDataBehavior::FAIL)) return false;
-    const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(param_id, qcoin::v2::PubKeyHash(kp.pk), sighash);
+    const uint256 pk_hash = qcoin::v2::PubKeyHash(pk);
+    const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(param_id, pk_hash, sighash);
     const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
     std::vector<uint8_t> sig;
-    const bool signed_ok = qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig);
-    qcoin::pqc::WipeSecret(kp.sk); // the secret is not needed past this point
+    bool signed_ok{false};
+    qcoin::pqc::SigScheme scheme{qcoin::pqc::SigScheme::ECDSA};
+    // The secret is only lent for the signing call itself and never copied to a local (SigningProvider::WithMlDsaKey).
+    const bool have_key = provider.WithMlDsaKey(pk_hash, [&](const qcoin::pqc::MlDsaKeyPair& kp) {
+        scheme = kp.scheme;
+        if (qcoin::pqc::ParamIdFor(kp.scheme) != param_id) return;
+        signed_ok = qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig);
+    });
+    if (!have_key) {
+        LogInfo("Qcoin: provider has no ML-DSA secret key for witness v2 program %s", HexStr(program).substr(0, 16));
+        return false;
+    }
     if (!signed_ok) return false;
-    attestation = qcoin::v2::BuildAttestation(param_id, kp.pk, sig);
-    LogInfo("Qcoin: built %s attestation (%u bytes) for witness v2 input %u", qcoin::pqc::SigSchemeName(kp.scheme), unsigned(attestation.size()), nIn);
+    attestation = qcoin::v2::BuildAttestation(param_id, pk, sig);
+    LogInfo("Qcoin: built %s attestation (%u bytes) for witness v2 input %u", qcoin::pqc::SigSchemeName(scheme), unsigned(attestation.size()), nIn);
     return true;
 }
 

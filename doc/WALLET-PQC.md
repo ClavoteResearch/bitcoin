@@ -74,12 +74,67 @@ listed under "Testnet readiness" and "Remaining gaps".
   `secure_allocator` (locked pool, `memory_cleanse` on free), the same type as
   `CKeyingMaterial`. Decrypted keys move straight from the crypter into it, the
   database loader deserialises into it, and the signer calls `WipeSecret` as soon
-  as liboqs has produced the signature. What liboqs does with its own internal
-  copies during signing is up to liboqs (it cleanses them).
+  as liboqs has produced the signature. What liboqs keeps in its own stack frames
+  while it signs is listed under "Secret key exposure while signing".
 - Keys are HD-derived from the wallet root (see "HD derivation"); each is still
   stored with its descriptor (about 3.9 KB for ML-DSA-44) plus its index.
 - No RPC exposes the keys; `listdescriptors true` cannot print a private form
   of `wpq()`.
+
+### Secret key exposure while signing
+
+Where an ML-DSA secret key is in memory, for how long, and what is left. Measured with `fork/test/regtest_v2_memscan.sh [bin]
+[mldsa44|mldsa87]`, which reads the key of a test wallet from the wallet file once, encrypts the wallet, restarts the node and
+then counts the copies of that key in the node's own memory (anonymous mappings: heap, locked pool, stacks), outside and inside the
+signing call (`fork/test/memscan_mldsa.py` scans from outside, `fork/test/memscan_preload.c` is an `LD_PRELOAD` wrapper on
+`OQS_SIG_sign_with_ctx_str` and `OQS_MEM_cleanse` that scans from inside).
+
+Who calls liboqs with a secret key: `qcoin::pqc::MlDsaSignCtx` (and `MlDsaSign`, unused by the wallet), reached from the key-path
+signer (`MutableTransactionSignatureCreator::CreateMlDsaAttestation`, `script/sign.cpp`) and the script-path PSBT signer
+(`psbt.cpp`); `MlDsaKeygen` and `MlDsaKeygenFromSeed` write a new key straight into a `SecureBytes`. Nothing else calls the
+liboqs signing API.
+
+| | Before | Now |
+|---|---|---|
+| Lifetime of the plaintext key in an encrypted, unlocked wallet | for the whole signing operation (the signing provider decrypted every key of the descriptor up front and kept it until the provider was dropped) | only inside the signing call: the descriptor decrypts the one key into a `SecureBytes` when the signer asks (`SigningProvider::WithMlDsaKey`) and wipes it as soon as the call returns |
+| Copies of the key in memory while liboqs signs (measured) | 2 (provider copy, signer's copy) | **1** (the buffer that is handed to liboqs by pointer) |
+| Copies of the key after the signature (measured) | 0 | 0 |
+| Plain `std::vector` holding a secret | none in the signing path | none |
+| Early returns | the signer wiped on success and failure of the signature, not on the early exits before it | no copy outside the lending call, so no exit path can skip the wipe; a failing or throwing callback still wipes (`secure_allocator` cleanses on free) |
+| Presence check for leaf selection (`HaveMlDsaSecret`) | decrypted the key to see whether it exists | looks at the key map, decrypts nothing |
+| Unpacked key left on the stack by liboqs after it returns (measured, K = signing seed) | 1 copy in the dead stack below the signer | **0**: `ScrubStack()` overwrites 192 KiB below the caller right after the liboqs call (signing and key generation) |
+| Locked wallet | no copy | no copy (nothing is decrypted while locked) |
+
+liboqs 0.14.0 takes the secret key by pointer (`OQS_SIG_sign_with_ctx_str(..., sk)`) and does not copy it at that level, so the
+buffer that the wallet owns (locked, zeroed on free) is the only copy of the key. For an unencrypted wallet that buffer is the
+stored key itself, lent by reference, so there is no second copy at all.
+
+Residual surface, not closed:
+
+- **liboqs internal copies.** The reference ML-DSA signer unpacks the key into stack variables (rho, K, tr, s1, s2, t0), builds
+  the matrix A and the masking vectors and runs Keccak over K, all in its own frames, for the roughly 0.4 ms (ML-DSA-44) to 0.8 ms
+  (ML-DSA-87) of the call. liboqs 0.14.0 clears none of them (`sign.c` has no cleanse; the AVX2 code is not used in the pinned build).
+  These frames are scrubbed afterwards (above), not during. Stack pages are not in the locked pool, so a stack page can be
+  swapped out while the call runs.
+- **Same-user memory readers.** Anything that can read the process memory during the call (ptrace, a core dump written in that
+  window, a debugger, another thread bug) sees the key. This tree does not set `PR_SET_DUMPABLE`, disable core dumps, call
+  `mlockall` or set `RLIMIT_CORE`.
+- **Registers and caches.** Register spills, cache lines and store buffers that held key material are not cleared; `ScrubStack`
+  overwrites memory, not caches.
+- **Timing and cache side channels.** The pinned liboqs is the portable reference build. Rejection sampling makes the number of
+  loop iterations vary with the message, as the specification intends (the leak does not depend on the key). Constant-time
+  behaviour of the key-dependent operations is what pq-crystals claims for the reference code and has not been audited or
+  measured here. The AVX2 build is excluded for a different reason (see `LIBOQS-PIN.md`).
+- **Fault injection.** Signing is randomized (hedged); a signer that is made to compute a faulty signature can leak key
+  material (CVE-2024-31510 class, `LIBOQS-PIN.md`). A faulty signature is not used (`ProduceSignature` verifies the script before
+  reporting success), but the faulty value existed.
+- **Unencrypted wallets.** The plaintext key stays in the locked pool for as long as the wallet is loaded, by design; the
+  protection above is for encrypted wallets while unlocked. An unlocked wallet also keeps the master encryption key in memory.
+- **At rest.** The wallet file of an unencrypted wallet holds the key in plaintext; SQLite free pages and journal files may keep
+  the pre-encryption record after `encryptwallet` (this tree does not set `secure_delete`). A key larger than a database page
+  (ML-DSA-87) is stored over overflow pages.
+
+Not done: an own constant-time signer, signing in a separate process, `mlock` for the signing stack, a constant-time check of the build.
 
 ## Value rule: Qcoin is a separate coin
 

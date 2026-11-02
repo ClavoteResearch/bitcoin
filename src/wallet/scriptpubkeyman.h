@@ -383,6 +383,9 @@ public:
     bool HavePrivateKeys() const override;
     //! Qcoin: whether this descriptor holds the secret of the ML-DSA key with this pk_hash (SHA256 of the public key).
     bool HaveMlDsaSecret(const uint256& pk_hash) const;
+    //! Qcoin: lend the ML-DSA key to `use` (see SigningProvider::WithMlDsaKey). A wallet with encrypted keys decrypts this one
+    //! key into locked memory for the duration of the call only; the plaintext keys of an unencrypted wallet are lent by reference.
+    bool WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const;
     //! Qcoin / Option B: persist an ML-DSA keypair for this descriptor and keep it in memory.
     bool AddMlDsaKeyWithDB(WalletBatch& batch, const uint256& pk_hash, const qcoin::pqc::MlDsaKeyPair& key);
     //! Qcoin / Option B: in-memory only, used while loading the wallet database.

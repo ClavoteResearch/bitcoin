@@ -19,6 +19,17 @@ std::atomic<SigScheme> g_wallet_sig_scheme{static_cast<SigScheme>(QCOIN_DEFAULT_
 /** Serialises every liboqs call made by this module (see MlDsaKeygenFromSeed). */
 std::mutex g_oqs_mutex;
 
+/** liboqs unpacks the secret key into local variables (rho, K, tr, s1, s2, t0, the matrix A, the Keccak state) while it signs or
+ * generates a key and clears none of them; the frames are popped but their bytes stay on the stack until something else is
+ * written there. ML-DSA-87 signing uses about 120 KiB of stack. ScrubStack is called right after the liboqs call, from the same
+ * depth, and overwrites that region. */
+constexpr size_t STACK_SCRUB_BYTES{192 * 1024};
+[[gnu::noinline]] void ScrubStack()
+{
+    unsigned char region[STACK_SCRUB_BYTES];
+    OQS_MEM_cleanse(region, sizeof(region));
+}
+
 // State for the temporary deterministic random source used by MlDsaKeygenFromSeed.
 const uint8_t* g_seed_ptr{nullptr};
 bool g_seed_served{false};
@@ -120,7 +131,9 @@ bool MlDsaKeygen(SigScheme scheme, MlDsaKeyPair& out)
     out.scheme = scheme;
     out.pk.assign(sig->length_public_key, 0);
     out.sk.assign(sig->length_secret_key, 0);
-    if (OQS_SIG_keypair(sig.get(), out.pk.data(), out.sk.data()) != OQS_SUCCESS) {
+    const OQS_STATUS rc = OQS_SIG_keypair(sig.get(), out.pk.data(), out.sk.data());
+    ScrubStack();
+    if (rc != OQS_SUCCESS) {
         out.pk.clear();
         WipeSecret(out.sk);
         return false;
@@ -142,7 +155,9 @@ bool MlDsaSign(SigScheme scheme, std::span<const uint8_t> sk, std::span<const ui
     if (sk.size() != sig->length_secret_key) return false;
     sig_out.assign(sig->length_signature, 0);
     size_t sig_len = 0;
-    if (OQS_SIG_sign(sig.get(), sig_out.data(), &sig_len, msg.data(), msg.size(), sk.data()) != OQS_SUCCESS) {
+    const OQS_STATUS rc = OQS_SIG_sign(sig.get(), sig_out.data(), &sig_len, msg.data(), msg.size(), sk.data());
+    ScrubStack();
+    if (rc != OQS_SUCCESS) {
         sig_out.clear();
         return false;
     }
@@ -176,7 +191,10 @@ bool MlDsaSignCtx(SigScheme scheme, std::span<const uint8_t> sk, std::span<const
     if (sk.size() != sig->length_secret_key) return false;
     sig_out.assign(sig->length_signature, 0);
     size_t sig_len = 0;
-    if (OQS_SIG_sign_with_ctx_str(sig.get(), sig_out.data(), &sig_len, msg.data(), msg.size(), ctx.data(), ctx.size(), sk.data()) != OQS_SUCCESS) {
+    // sk is passed as a pointer into the caller's memory; liboqs makes no copy of it at this level
+    const OQS_STATUS rc = OQS_SIG_sign_with_ctx_str(sig.get(), sig_out.data(), &sig_len, msg.data(), msg.size(), ctx.data(), ctx.size(), sk.data());
+    ScrubStack();
+    if (rc != OQS_SUCCESS) {
         sig_out.clear();
         return false;
     }
@@ -207,6 +225,7 @@ bool MlDsaKeygenFromSeed(SigScheme scheme, std::span<const uint8_t> seed, MlDsaK
     g_seed_unexpected = false;
     OQS_randombytes_custom_algorithm(&SeededRandombytes);
     const OQS_STATUS rc = OQS_SIG_keypair(sig.get(), out.pk.data(), out.sk.data());
+    ScrubStack();
     // Restore the system RNG before anything else can run.
     (void)OQS_randombytes_switch_algorithm(OQS_RAND_alg_system);
     g_seed_ptr = nullptr;

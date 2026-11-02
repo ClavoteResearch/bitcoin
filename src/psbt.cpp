@@ -194,23 +194,27 @@ util::Expected<void, PSBTError> SignMlDsaScriptPathInput(const SigningProvider& 
         bool have_sighash = false;
         for (const auto& [pk_hash, entry_index] : keys) {
             if (entry_for(pk_hash)) continue;
-            qcoin::pqc::MlDsaKeyPair kp;
-            if (!provider.GetMlDsaKey(pk_hash, kp)) continue;
-            if (qcoin::pqc::ParamIdFor(kp.scheme) != sp.param_id) { qcoin::pqc::WipeSecret(kp.sk); continue; }
-            if (!have_sighash) {
-                if (!ScriptPathSighash(sp, tx, index, *txdata, sighash)) { qcoin::pqc::WipeSecret(kp.sk); return util::Unexpected{PSBTError::INVALID_TX}; }
-                have_sighash = true;
-            }
-            const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(sp.param_id, pk_hash, sighash);
+            // The sighash is needed only once the provider holds a key of this leaf; the secret itself is only lent for the
+            // signing call (SigningProvider::WithMlDsaKey) and never copied to a local.
             const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
             std::vector<uint8_t> sig;
-            const bool ok = qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig);
-            qcoin::pqc::WipeSecret(kp.sk);
-            if (!ok) continue;
             std::vector<unsigned char> value;
-            value.push_back(sp.param_id);
-            value.insert(value.end(), kp.pk.begin(), kp.pk.end());
-            value.insert(value.end(), sig.begin(), sig.end());
+            bool bad_tx{false};
+            const bool have_key = provider.WithMlDsaKey(pk_hash, [&](const qcoin::pqc::MlDsaKeyPair& kp) {
+                if (qcoin::pqc::ParamIdFor(kp.scheme) != sp.param_id) return;
+                if (!have_sighash) {
+                    if (!ScriptPathSighash(sp, tx, index, *txdata, sighash)) { bad_tx = true; return; }
+                    have_sighash = true;
+                }
+                const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(sp.param_id, pk_hash, sighash);
+                if (!qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig)) return;
+                value.push_back(sp.param_id);
+                value.insert(value.end(), kp.pk.begin(), kp.pk.end());
+                value.insert(value.end(), sig.begin(), sig.end());
+            });
+            if (!have_key) continue;
+            if (bad_tx) return util::Unexpected{PSBTError::INVALID_TX};
+            if (value.empty()) continue;
             input.m_proprietary.insert(MakeQcoinField(QCOIN_PROP_SCRIPTPATH_ENTRY, std::span<const unsigned char>(pk_hash.begin(), pk_hash.size()), std::move(value)));
         }
     }

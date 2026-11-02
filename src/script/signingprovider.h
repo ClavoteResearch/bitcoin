@@ -197,6 +197,18 @@ public:
      */
     virtual bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const { return false; }
     virtual bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const { return false; }
+    /** Qcoin: lend the ML-DSA key with this pk_hash to `use` for the duration of the call; returns whether the provider has it.
+     * The secret is not copied for the caller: a provider that stores it passes a reference, one that keeps it encrypted
+     * decrypts it into a secure buffer that is wiped as soon as `use` returns. Signing code uses this, not GetMlDsaKey
+     * (which hands out a copy that the caller has to wipe). */
+    virtual bool WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const
+    {
+        qcoin::pqc::MlDsaKeyPair kp;
+        if (!GetMlDsaKey(pk_hash, kp)) return false;
+        use(kp);
+        qcoin::pqc::WipeSecret(kp.sk);
+        return true;
+    }
     /** Qcoin: the script-path leaves (leaf script and control block) of witness v2 program Q, if known (wpq(KEY,TREE) descriptors). */
     virtual bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const { return false; }
 
@@ -238,6 +250,7 @@ public:
     HidingSigningProvider(const SigningProvider* provider, bool hide_secret, bool hide_origin) : m_hide_secret(hide_secret), m_hide_origin(hide_origin), m_provider(provider) {}
     bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
     bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
+    bool WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const override;
     bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const override;
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
@@ -263,10 +276,16 @@ struct FlatSigningProvider final : public SigningProvider
     std::map<uint256, MuSig2SecNonce>* musig2_secnonces{nullptr};
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> mldsa_pubkeys; /** Qcoin: witness v2 program Q -> ML-DSA public key */
     std::map<uint256, qcoin::pqc::MlDsaKeyPair> mldsa_keys; /** Qcoin: SHA256(pk) -> ML-DSA keypair (secret!) */
+    /** Qcoin: lenders of ML-DSA keys that the provider does not hold itself, for a wallet descriptor that keeps them encrypted.
+     * Called with the pk_hash and the callback of WithMlDsaKey; a source calls it, with the key, if it has the key. They must
+     * not outlive what they capture. */
+    using MlDsaKeySource = std::function<bool(const uint256&, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>&)>;
+    std::vector<MlDsaKeySource> mldsa_key_sources;
     std::map<std::vector<unsigned char>, std::vector<MlDsaScriptPath>> mldsa_scriptpaths; /** Qcoin: witness v2 program Q -> its script-path leaves */
 
     bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
     bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
+    bool WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const override;
     bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const override;
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
@@ -372,6 +391,7 @@ public:
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
     bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
+    bool WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const override;
     bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;

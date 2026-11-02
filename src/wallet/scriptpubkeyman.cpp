@@ -1393,11 +1393,38 @@ size_t DescriptorScriptPubKeyMan::MlDsaKeyCount() const
 
 bool DescriptorScriptPubKeyMan::HaveMlDsaSecret(const uint256& pk_hash) const
 {
+    // presence only: nothing is decrypted to answer this
     LOCK(cs_desc_man);
-    auto keys = GetMlDsaKeys();
-    const bool have = keys.count(pk_hash) > 0;
-    for (auto& [_, kp] : keys) qcoin::pqc::WipeSecret(kp.sk);
-    return have;
+    return m_map_mldsa_keys.contains(pk_hash) || m_map_crypted_mldsa_keys.contains(pk_hash);
+}
+
+bool DescriptorScriptPubKeyMan::WithMlDsaKey(const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) const
+{
+    LOCK(cs_desc_man);
+    if (m_storage.HasEncryptionKeys()) {
+        if (m_storage.IsLocked()) return false;
+        const auto it = m_map_crypted_mldsa_keys.find(pk_hash);
+        if (it == m_map_crypted_mldsa_keys.end()) return false;
+        CKeyingMaterial plain; // secure_allocator: locked pool, cleansed on free
+        const bool ok = m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+            return DecryptSecret(encryption_key, it->second.crypted_sk, pk_hash, plain);
+        });
+        if (!ok || plain.size() != qcoin::pqc::MlDsaSecKeyLen(it->second.scheme)) {
+            qcoin::pqc::WipeSecret(plain);
+            return false;
+        }
+        qcoin::pqc::MlDsaKeyPair kp;
+        kp.scheme = it->second.scheme;
+        kp.pk = it->second.pk;
+        kp.sk = std::move(plain);
+        use(kp);
+        qcoin::pqc::WipeSecret(kp.sk); // wiped now, not at the end of the scope
+        return true;
+    }
+    const auto it = m_map_mldsa_keys.find(pk_hash);
+    if (it == m_map_mldsa_keys.end()) return false;
+    use(it->second);
+    return true;
 }
 
 bool DescriptorScriptPubKeyMan::HavePrivateKeys() const
@@ -1488,8 +1515,12 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
 
     // Qcoin / Option B: ML-DSA secrets for wpq() descriptors (not gated on HavePrivateKeys,
     // which only counts secp256k1 keys).
-    if (include_private) {
-        for (auto& [pk_hash, kp] : GetMlDsaKeys()) out_keys->mldsa_keys[pk_hash] = std::move(kp);
+    // The provider does not copy or decrypt the secrets; it lends them one signature at a time (WithMlDsaKey). The lender captures
+    // this descriptor, so the provider must not outlive it; providers are built per signing operation and dropped with it.
+    if (include_private && (!m_map_mldsa_keys.empty() || !m_map_crypted_mldsa_keys.empty())) {
+        out_keys->mldsa_key_sources.push_back([this](const uint256& pk_hash, const std::function<void(const qcoin::pqc::MlDsaKeyPair&)>& use) {
+            return WithMlDsaKey(pk_hash, use);
+        });
     }
 
     return out_keys;
