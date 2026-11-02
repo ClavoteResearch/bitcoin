@@ -96,6 +96,8 @@
 #include <tuple>
 #include <vector>
 
+#include "../../fork/src/crypto/randomx_pow.h" // Qcoin: RandomX status in getblockchaininfo
+
 using kernel::CCoinsStats;
 using kernel::CoinStatsHashType;
 
@@ -1414,6 +1416,16 @@ RPCMethod getblockchaininfo()
                 {RPCResult::Type::NUM_TIME, "mediantime", "the median block time expressed in " + UNIX_EPOCH_TIME},
                 {RPCResult::Type::NUM, "verificationprogress", "estimate of verification progress [0..1]"},
                 {RPCResult::Type::BOOL, "initialblockdownload", "(debug information) estimate of whether this node is in Initial Block Download mode"},
+                {RPCResult::Type::OBJ, "randomx", "Qcoin: RandomX proof-of-work verification state of this node",
+                {
+                    {RPCResult::Type::STR, "mode", "\"light\" (256 MiB cache per key, default) or \"full\" (2 GiB dataset per key, -randomxfull)"},
+                    {RPCResult::Type::BOOL, "active", "whether the next block is proven with RandomX (as opposed to double SHA-256)"},
+                    {RPCResult::Type::NUM, "keys_cached", "RandomX keys with a built cache (at most 2: the current and the previous epoch)"},
+                    {RPCResult::Type::NUM, "datasets_ready", "keys whose full dataset is built and in use (full mode)"},
+                    {RPCResult::Type::NUM, "datasets_building", "keys whose full dataset is still being built in the background (full mode)"},
+                    {RPCResult::Type::NUM, "hashes_light", "RandomX hashes computed with a cache since the node started"},
+                    {RPCResult::Type::NUM, "hashes_full", "RandomX hashes computed with a dataset since the node started"},
+                }},
                 {RPCResult::Type::OBJ, "backgroundvalidation", /*optional=*/true, "state info regarding background validation process",
                 {
                     {RPCResult::Type::NUM, "snapshotheight", "the height of the snapshot block. Background validation verifies the chain from genesis up to this height"},
@@ -1463,6 +1475,18 @@ RPCMethod getblockchaininfo()
     obj.pushKV("mediantime", tip.GetMedianTimePast());
     obj.pushKV("verificationprogress", chainman.GuessVerificationProgress(&tip));
     obj.pushKV("initialblockdownload", chainman.IsInitialBlockDownload());
+    {
+        const qcoin::pow::RandomXStatus rx{qcoin::pow::GetRandomXStatus()};
+        UniValue randomx(UniValue::VOBJ);
+        randomx.pushKV("mode", rx.full_mode ? "full" : "light");
+        randomx.pushKV("active", tip.nHeight + 1 >= chainman.GetConsensus().RandomXHeight);
+        randomx.pushKV("keys_cached", rx.keys_cached);
+        randomx.pushKV("datasets_ready", rx.datasets_ready);
+        randomx.pushKV("datasets_building", rx.datasets_building);
+        randomx.pushKV("hashes_light", rx.hashes_light);
+        randomx.pushKV("hashes_full", rx.hashes_full);
+        obj.pushKV("randomx", std::move(randomx));
+    }
     auto historical_blocks{chainman.GetHistoricalBlockRange()};
     if (historical_blocks) {
         UniValue background_validation(UniValue::VOBJ);

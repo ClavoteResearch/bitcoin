@@ -130,6 +130,8 @@
 #include <utility>
 #include <vector>
 
+#include "../fork/src/crypto/randomx_pow.h" // Qcoin: RandomX proof of work
+
 #ifndef WIN32
 #include <csignal>
 #endif
@@ -534,6 +536,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-minimumchainwork=<hex>", strprintf("Minimum work assumed to exist on a valid chain in hex (default: %s, testnet3: %s, testnet4: %s, signet: %s)", defaultChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnetChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnet4ChainParams->GetConsensus().nMinimumChainWork.GetHex(), signetChainParams->GetConsensus().nMinimumChainWork.GetHex()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
     argsman.AddArg("-par=<n>", strprintf("Set the number of script verification threads (0 = auto, up to %d, <0 = leave that many cores free, default: %d)",
         MAX_SCRIPTCHECK_THREADS, DEFAULT_SCRIPTCHECK_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-randomxfull", "Qcoin: verify and mine RandomX proof of work with the 2 GiB full dataset instead of the 256 MiB cache (about 4.5 GiB of memory with two epoch keys; the dataset of a new key is built in the background and the cache is used until it is ready; default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-prevoutfetchthreads=<n>", strprintf("Set the number of threads used to prefetch block input prevouts from the chainstate database (0 disables, up to %d, default: %d). Negative values are rejected.", MAX_PREVOUTFETCH_THREADS, DEFAULT_PREVOUTFETCH_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-persistmempool", strprintf("Whether to save the mempool on shutdown and load on restart (default: %u)", DEFAULT_PERSIST_MEMPOOL), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", BITCOIN_PID_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -1543,6 +1546,16 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     }
 
     LogInfo("Using at most %i automatic connections (%i file descriptors available)", num_p2p_max_connections, available_fds);
+
+    // Qcoin: RandomX verification mode. Light (256 MiB cache per key) is the default; -randomxfull adds a 2 GiB dataset per key.
+    {
+        const bool randomx_full{args.GetBoolArg("-randomxfull", false)};
+        qcoin::pow::SetRandomXFullMode(randomx_full);
+        if (chainparams.GetConsensus().RandomXHeight < std::numeric_limits<int>::max()) {
+            LogInfo("RandomX: %s verification (%s)", randomx_full ? "full-dataset" : "light-mode",
+                    randomx_full ? "2 GiB dataset per key built in the background, about 4.5 GiB with two keys; the 256 MiB cache is used until a dataset is ready" : "256 MiB cache per key, two keys cached");
+        }
+    }
 
     // Warn about relative -datadir path.
     if (args.IsArgSet("-datadir") && !args.GetPathArg("-datadir").is_absolute()) {

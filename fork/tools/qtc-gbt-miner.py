@@ -9,8 +9,8 @@ process) but enough for the minimal difficulty of qtctest.
 RandomX: when the template says "powalgo": "randomx" (heights from Consensus::Params::RandomXHeight, from genesis on
 regtest and qtctest) the 80-byte header is hashed with RandomX instead and the miner needs the native scanner
 qtc-randomx-scan (cmake --build <dir> --target qtc-randomx-scan; it is looked for next to this script, in ./build/bin and
-in ../../build/bin, or give --randomx-scanner). --fast uses the 2 GiB dataset (about ten times the hash rate after a start-up
-of tens of seconds). The scanner is keyed with the template's "randomxkey" (it changes every 2048 blocks). The block
+in ../../build/bin, or give --randomx-scanner). --randomxfull (alias --fast) uses the 2 GiB dataset (about three times the hash rate
+on 16 threads after a start-up of about 50 s; needs about 2.3 GiB). The scanner is keyed with the template's "randomxkey" (it changes every 2048 blocks). The block
 hash and the layout of the header are unchanged; only the proof-of-work hash differs.
 
     qtc-gbt-miner.py --address tq1z... [--chain qtctest] [--datadir ~/.bitcoin] [--rpcurl http://127.0.0.1:28332]
@@ -230,7 +230,7 @@ def main():
     g = ap.add_mutually_exclusive_group(); g.add_argument("--blocks", type=int); g.add_argument("--until-height", type=int)
     ap.add_argument("--scanner", help="path of the native qtc-nonce-scan helper (default: the one next to this script, if built)")
     ap.add_argument("--randomx-scanner", help="path of the native qtc-randomx-scan helper (default: next to this script or in build/bin)")
-    ap.add_argument("--fast", action="store_true", help="RandomX: use the 2 GiB dataset (faster after a long start-up)")
+    ap.add_argument("--fast", "--randomxfull", dest="fast", action="store_true", help="RandomX: use the 2 GiB full dataset (about three times the hash rate on 16 threads after a start-up of about 50 s; needs about 2.3 GiB)")
     a = ap.parse_args()
     global SCANNER, RX_SCANNER, RX_FAST
     cand = a.scanner or os.path.join(os.path.dirname(os.path.abspath(__file__)), "qtc-nonce-scan")

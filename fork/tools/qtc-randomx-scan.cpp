@@ -10,8 +10,9 @@
 //
 // Environment: QTC_RX_KEY=<hex> (required: the RandomX key of the block being mined, i.e. the "randomxkey" field of the
 // getblocktemplate result: the identifier of the key block as 32 raw bytes in internal order, hex),
-// QTC_RX_THREADS=<n> (default: all hardware threads), QTC_RX_FAST=1 (use the 2 GiB dataset: about
-// ten times the hash rate after a start-up of tens of seconds; default is the 256 MiB cache, which is what nodes use).
+// QTC_RX_THREADS=<n> (default: all hardware threads), QTC_RX_FAST=1 or QTC_RX_FULL=1 (use the 2 GiB dataset: about
+// three times the hash rate on 16 threads after a start-up of about 50 s; default is the 256 MiB cache, which is what
+// nodes use by default).
 // The thread t of n scans START + t*STRIDE, START + (t+n)*STRIDE, ...
 // --selftest checks the RandomX known-answer vector of the upstream test suite (key "test key 000", input "This is a test").
 #include "../src/crypto/randomx/src/randomx.h"
@@ -94,7 +95,8 @@ int main(int argc, char** argv)
     unsigned nthreads = std::thread::hardware_concurrency();
     if (const char* t = std::getenv("QTC_RX_THREADS")) nthreads = static_cast<unsigned>(std::strtoul(t, nullptr, 10));
     if (nthreads == 0) nthreads = 1;
-    const bool fast = std::getenv("QTC_RX_FAST") && std::strcmp(std::getenv("QTC_RX_FAST"), "1") == 0;
+    const bool fast = (std::getenv("QTC_RX_FAST") && std::strcmp(std::getenv("QTC_RX_FAST"), "1") == 0) ||
+                      (std::getenv("QTC_RX_FULL") && std::strcmp(std::getenv("QTC_RX_FULL"), "1") == 0);
 
     const char* key_env = std::getenv("QTC_RX_KEY");
     if (!key_env || std::strlen(key_env) == 0 || std::strlen(key_env) % 2) {
