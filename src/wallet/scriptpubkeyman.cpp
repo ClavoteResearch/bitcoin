@@ -1391,6 +1391,15 @@ size_t DescriptorScriptPubKeyMan::MlDsaKeyCount() const
     return m_map_mldsa_keys.size() + m_map_crypted_mldsa_keys.size();
 }
 
+bool DescriptorScriptPubKeyMan::HaveMlDsaSecret(const uint256& pk_hash) const
+{
+    LOCK(cs_desc_man);
+    auto keys = GetMlDsaKeys();
+    const bool have = keys.count(pk_hash) > 0;
+    for (auto& [_, kp] : keys) qcoin::pqc::WipeSecret(kp.sk);
+    return have;
+}
+
 bool DescriptorScriptPubKeyMan::HavePrivateKeys() const
 {
     LOCK(cs_desc_man);

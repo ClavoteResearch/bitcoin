@@ -166,6 +166,13 @@ public:
 std::optional<std::vector<std::tuple<int, std::vector<unsigned char>, int>>> InferTaprootTree(const TaprootSpendData& spenddata, const XOnlyPubKey& output);
 
 /** An interface to be implemented by keystores that support signing. */
+/** Qcoin: one script-path spending option of a witness v2 output: a leaf (version byte 0xc0) and the control block that proves it. */
+struct MlDsaScriptPath {
+    uint8_t leaf_version{0};
+    std::vector<unsigned char> leaf;    //!< leaf script
+    std::vector<unsigned char> control; //!< leaf_version || param_id || internal pk_hash || 32-byte nodes
+};
+
 class SigningProvider
 {
 public:
@@ -190,6 +197,8 @@ public:
      */
     virtual bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const { return false; }
     virtual bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const { return false; }
+    /** Qcoin: the script-path leaves (leaf script and control block) of witness v2 program Q, if known (wpq(KEY,TREE) descriptors). */
+    virtual bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const { return false; }
 
     bool GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const
     {
@@ -229,6 +238,7 @@ public:
     HidingSigningProvider(const SigningProvider* provider, bool hide_secret, bool hide_origin) : m_hide_secret(hide_secret), m_hide_origin(hide_origin), m_provider(provider) {}
     bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
     bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
+    bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const override;
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
@@ -253,9 +263,11 @@ struct FlatSigningProvider final : public SigningProvider
     std::map<uint256, MuSig2SecNonce>* musig2_secnonces{nullptr};
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> mldsa_pubkeys; /** Qcoin: witness v2 program Q -> ML-DSA public key */
     std::map<uint256, qcoin::pqc::MlDsaKeyPair> mldsa_keys; /** Qcoin: SHA256(pk) -> ML-DSA keypair (secret!) */
+    std::map<std::vector<unsigned char>, std::vector<MlDsaScriptPath>> mldsa_scriptpaths; /** Qcoin: witness v2 program Q -> its script-path leaves */
 
     bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
     bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
+    bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const override;
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
@@ -360,6 +372,7 @@ public:
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetMlDsaPubKey(const std::vector<unsigned char>& program, std::vector<unsigned char>& pubkey) const override;
     bool GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaKeyPair& key) const override;
+    bool GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
 };

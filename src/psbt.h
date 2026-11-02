@@ -1642,6 +1642,8 @@ bool PSBTInputSigned(const PSBTInput& input);
 bool PSBTInputHasMlDsaScriptPath(const PSBTInput& input);
 /** The witness v2 key-path scripts (OP_2 <Q>) of the keys named by the leaf's OP_CHECKMLDSAVERIFY, to find signers. */
 std::vector<CScript> PSBTMlDsaScriptPathKeyScripts(const PSBTInput& input);
+/** Qcoin: for each key of a leaf, its pk_hash and the witness v2 key-path script (OP_2 <commit>) of the key, to find out whether a wallet holds the key. */
+std::vector<std::pair<uint256, CScript>> MlDsaLeafKeyScripts(const std::vector<unsigned char>& leaf_script, uint8_t param_id);
 /** Add the leaf script and control block to an input; checks the shape and, if the UTXO is known, that they commit to it. */
 bool SetPSBTMlDsaScriptPath(PSBTInput& input, const std::vector<unsigned char>& leaf_script, const std::vector<unsigned char>& control, std::string& error);
 

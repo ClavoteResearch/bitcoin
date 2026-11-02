@@ -153,7 +153,10 @@ ImportResult ImportDescriptor(CWallet& wallet, const ImportDescriptorRequest& re
 
         // If private keys are enabled, check some things.
         if (!wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
-            if (keys.keys.empty()) {
+            // Qcoin: a wpq(KEY,TREE) script-path descriptor holds no secret itself; the leaf keys are ML-DSA keys the wallet already
+            // has in its own wpq(KEY) descriptors
+            const bool mldsa_script_path = !expand_keys.mldsa_scriptpaths.empty();
+            if (keys.keys.empty() && !mldsa_script_path) {
                 return ImportResult(
                     WalletErrorCode::GenericError,
                     "Cannot import descriptor without private keys to a wallet with private keys enabled",

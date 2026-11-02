@@ -2036,6 +2036,47 @@ std::optional<PSBTError> CWallet::FillPSBT(PartiallySignedTransaction& psbtx, co
         }
     }
 
+    // Qcoin: an input that spends a witness v2 script-path output of a wpq(KEY,TREE) descriptor of this wallet gets the leaf and
+    // control block of the leaf this wallet can sign best (all its keys held, else the most keys held, else the first leaf),
+    // so that the key-holding descriptors below add their attestation entries
+    for (PSBTInput& input : psbtx.inputs) {
+        if (PSBTInputSigned(input) || PSBTInputHasMlDsaScriptPath(input)) continue;
+        CTxOut utxo;
+        if (!input.GetUTXO(utxo)) continue;
+        int wv{0};
+        std::vector<unsigned char> wp;
+        if (!utxo.scriptPubKey.IsWitnessProgram(wv, wp) || wv != 2 || wp.size() != 32) continue;
+        std::vector<MlDsaScriptPath> paths;
+        for (ScriptPubKeyMan* spkm : GetAllScriptPubKeyMans()) {
+            const auto provider = spkm->GetSolvingProvider(utxo.scriptPubKey);
+            if (provider && provider->GetMlDsaScriptPaths(wp, paths) && !paths.empty()) break;
+        }
+        if (paths.empty()) continue;
+        size_t best{0};
+        int best_score{-1};
+        for (size_t i = 0; i < paths.size(); ++i) {
+            const auto keys = MlDsaLeafKeyScripts(paths[i].leaf, paths[i].control[1]);
+            int held{0};
+            for (const auto& [pk_hash, key_script] : keys) {
+                for (ScriptPubKeyMan* spkm : GetAllScriptPubKeyMans()) {
+                    auto* desc_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spkm);
+                    if (!desc_man) continue;
+                    if (desc_man->HaveMlDsaSecret(pk_hash)) {
+                        ++held;
+                        break;
+                    }
+                }
+            }
+            const int score{held == static_cast<int>(keys.size()) ? 1000 + held : held};
+            if (score > best_score) {
+                best_score = score;
+                best = i;
+            }
+        }
+        std::string path_error;
+        SetPSBTMlDsaScriptPath(input, paths[best].leaf, paths[best].control, path_error);
+    }
+
     std::optional<PrecomputedTransactionData> txdata_res = PrecomputePSBTData(psbtx);
     if (!txdata_res) {
         return PSBTError::INVALID_TX;

@@ -58,6 +58,10 @@ bool HidingSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDs
     if (m_hide_secret) return false;
     return m_provider->GetMlDsaKey(pk_hash, key);
 }
+bool HidingSigningProvider::GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const
+{
+    return m_provider->GetMlDsaScriptPaths(program, paths);
+}
 
 bool HidingSigningProvider::GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const
 {
@@ -170,6 +174,13 @@ bool FlatSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsaK
     key = it->second;
     return true;
 }
+bool FlatSigningProvider::GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const
+{
+    const auto it = mldsa_scriptpaths.find(program);
+    if (it == mldsa_scriptpaths.end()) return false;
+    paths = it->second;
+    return true;
+}
 
 FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
 {
@@ -181,6 +192,7 @@ FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
     aggregate_pubkeys.merge(b.aggregate_pubkeys);
     mldsa_pubkeys.merge(b.mldsa_pubkeys);
     mldsa_keys.merge(b.mldsa_keys);
+    mldsa_scriptpaths.merge(b.mldsa_scriptpaths);
     // We shouldn't be merging 2 different sessions, just overwrite with b's sessions.
     if (!musig2_secnonces) musig2_secnonces = b.musig2_secnonces;
     return *this;
@@ -367,6 +379,14 @@ bool MultiSigningProvider::GetMlDsaKey(const uint256& pk_hash, qcoin::pqc::MlDsa
 {
     for (const auto& provider: m_providers) {
         if (provider->GetMlDsaKey(pk_hash, key)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::GetMlDsaScriptPaths(const std::vector<unsigned char>& program, std::vector<MlDsaScriptPath>& paths) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetMlDsaScriptPaths(program, paths)) return true;
     }
     return false;
 }

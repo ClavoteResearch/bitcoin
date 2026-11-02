@@ -269,6 +269,16 @@ std::vector<CScript> PSBTMlDsaScriptPathKeyScripts(const PSBTInput& input)
     return scripts;
 }
 
+std::vector<std::pair<uint256, CScript>> MlDsaLeafKeyScripts(const std::vector<unsigned char>& leaf_script, uint8_t param_id)
+{
+    std::vector<std::pair<uint256, CScript>> out;
+    for (const auto& [pk_hash, _] : LeafKeys(CScript(leaf_script.begin(), leaf_script.end()))) {
+        const uint256 q = qcoin::v2::ComputeCommitment(param_id, pk_hash, {});
+        out.emplace_back(pk_hash, CScript() << OP_2 << std::vector<unsigned char>(q.begin(), q.end()));
+    }
+    return out;
+}
+
 bool SetPSBTMlDsaScriptPath(PSBTInput& input, const std::vector<unsigned char>& leaf_script, const std::vector<unsigned char>& control, std::string& error)
 {
     if (!qcoin::v2::IsValidControlBlockSize(control.size())) {

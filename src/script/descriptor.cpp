@@ -1239,21 +1239,99 @@ public:
  * key is literal; the secret key is supplied by the SigningProvider
  * (SigningProvider::GetMlDsaKey, backed by the wallet database).
  */
+/** Qcoin: a node of the script tree of wpq(HEXPK,TREE); a leaf is mldsa_all(HEXPK,...), a branch is {TREE,TREE}. */
+struct WpqTreeNode {
+    std::vector<std::vector<unsigned char>> keys; //!< leaf: the ML-DSA public keys, in attestation entry order
+    std::unique_ptr<WpqTreeNode> left, right;     //!< branch
+    bool IsLeaf() const { return !left; }
+    std::unique_ptr<WpqTreeNode> Clone() const
+    {
+        auto n = std::make_unique<WpqTreeNode>();
+        n->keys = keys;
+        if (left) {
+            n->left = left->Clone();
+            n->right = right->Clone();
+        }
+        return n;
+    }
+    std::string ToString() const
+    {
+        if (!IsLeaf()) return "{" + left->ToString() + "," + right->ToString() + "}";
+        std::string s{"mldsa_all("};
+        for (size_t i = 0; i < keys.size(); ++i) {
+            if (i) s += ',';
+            s += HexStr(keys[i]);
+        }
+        return s + ")";
+    }
+};
+
+/** A leaf of the tree with the Merkle path (sibling hashes from the leaf up) that the control block carries. */
+struct WpqLeafInfo {
+    CScript script;
+    uint256 hash;
+    std::vector<uint256> nodes;
+};
+
+/** The leaf <pk_hash_0> 0 OP_CHECKMLDSAVERIFY <pk_hash_1> 1 OP_CHECKMLDSAVERIFY ... OP_1 for every key (an N-of-N leaf). Fills `leaves` in tree order and returns the Merkle root. */
+uint256 BuildWpqMerkle(const WpqTreeNode& n, std::vector<WpqLeafInfo>& leaves)
+{
+    if (n.IsLeaf()) {
+        WpqLeafInfo info;
+        for (size_t i = 0; i < n.keys.size(); ++i) {
+            const uint256 h = qcoin::v2::PubKeyHash(n.keys[i]);
+            info.script << std::vector<unsigned char>(h.begin(), h.end()) << int(i) << OP_CHECKMLDSAVERIFY;
+        }
+        info.script << OP_1;
+        info.hash = qcoin::v2::LeafHash(qcoin::v2::LEAF_VERSION_MLDSA, std::vector<uint8_t>(info.script.begin(), info.script.end()));
+        leaves.push_back(std::move(info));
+        return leaves.back().hash;
+    }
+    const size_t first_left = leaves.size();
+    const uint256 hl = BuildWpqMerkle(*n.left, leaves);
+    const size_t first_right = leaves.size();
+    const uint256 hr = BuildWpqMerkle(*n.right, leaves);
+    for (size_t i = first_left; i < first_right; ++i) leaves[i].nodes.push_back(hr);
+    for (size_t i = first_right; i < leaves.size(); ++i) leaves[i].nodes.push_back(hl);
+    return qcoin::v2::BranchHash(hl, hr);
+}
+
 class WpqDescriptor final : public DescriptorImpl
 {
     const uint8_t m_param_id;
     const std::vector<unsigned char> m_pubkey;
+    const std::unique_ptr<WpqTreeNode> m_tree; //!< null: the key-path form wpq(HEXPK)
 protected:
-    std::string ToStringExtra() const override { return HexStr(m_pubkey); }
+    std::string ToStringExtra() const override { return m_tree ? HexStr(m_pubkey) + "," + m_tree->ToString() : HexStr(m_pubkey); }
     std::vector<CScript> MakeScripts(const std::vector<CPubKey>&, std::span<const CScript>, FlatSigningProvider& out) const override
     {
-        const uint256 q = qcoin::v2::ComputeCommitment(m_param_id, qcoin::v2::PubKeyHash(m_pubkey), {});
+        const uint256 internal_hash = qcoin::v2::PubKeyHash(m_pubkey);
+        if (!m_tree) {
+            const uint256 q = qcoin::v2::ComputeCommitment(m_param_id, internal_hash, {});
+            const std::vector<unsigned char> program(q.begin(), q.end());
+            out.mldsa_pubkeys[program] = m_pubkey; // lets InferDescriptor and the signer map Q back to the key
+            return Vector(CScript() << OP_2 << program);
+        }
+        // Script-path form: Q commits to the internal key and the Merkle root of the leaves (the structure the interpreter
+        // verifies: BIP 341 leaf and branch hashing, control block leaf_version || param_id || internal pk_hash || nodes).
+        // The provider learns every leaf with its control block, not the internal key: a spend uses one leaf, never the key path.
+        std::vector<WpqLeafInfo> leaves;
+        const uint256 root = BuildWpqMerkle(*m_tree, leaves);
+        const uint256 q = qcoin::v2::ComputeCommitment(m_param_id, internal_hash, std::span<const uint8_t>(root.begin(), root.size()));
         const std::vector<unsigned char> program(q.begin(), q.end());
-        out.mldsa_pubkeys[program] = m_pubkey; // lets InferDescriptor and the signer map Q back to the key
+        auto& paths = out.mldsa_scriptpaths[program];
+        paths.clear();
+        for (const WpqLeafInfo& leaf : leaves) {
+            MlDsaScriptPath path;
+            path.leaf_version = qcoin::v2::LEAF_VERSION_MLDSA;
+            path.leaf.assign(leaf.script.begin(), leaf.script.end());
+            path.control = qcoin::v2::BuildControlBlock(qcoin::v2::LEAF_VERSION_MLDSA, m_param_id, internal_hash, leaf.nodes);
+            paths.push_back(std::move(path));
+        }
         return Vector(CScript() << OP_2 << program);
     }
 public:
-    WpqDescriptor(uint8_t param_id, std::vector<unsigned char> pubkey) : DescriptorImpl({}, "wpq"), m_param_id(param_id), m_pubkey(std::move(pubkey)) {}
+    WpqDescriptor(uint8_t param_id, std::vector<unsigned char> pubkey, std::unique_ptr<WpqTreeNode> tree = nullptr) : DescriptorImpl({}, "wpq"), m_param_id(param_id), m_pubkey(std::move(pubkey)), m_tree(std::move(tree)) {}
     bool IsSolvable() const final { return true; }
     std::optional<OutputType> GetOutputType() const override { return OutputType::UNKNOWN; }
     bool IsSingleType() const final { return true; }
@@ -1261,6 +1339,7 @@ public:
     std::optional<int64_t> ScriptSize() const override { return 1 + 1 + qcoin::v2::WITNESS_V2_PROGRAM_SIZE; }
     std::optional<int64_t> MaxSatisfactionWeight(bool) const override
     {
+        if (m_tree) return {}; // depends on the leaf; script-path coins are spent through PSBTs, not selected by size
         const auto sizes = qcoin::v2::SizesFor(m_param_id);
         if (!sizes) return {};
         // witness element: compact-size(len) + attestation (0x51 || n || param_id || pk || sig); 1 WU per byte.
@@ -1268,9 +1347,66 @@ public:
         const int64_t att = 3 + static_cast<int64_t>(sizes->pk + sizes->sig);
         return static_cast<int64_t>(GetSizeOfCompactSize(att)) + att;
     }
-    std::optional<int64_t> MaxSatisfactionElems() const override { return 1; }
-    std::unique_ptr<DescriptorImpl> Clone() const override { return std::make_unique<WpqDescriptor>(m_param_id, m_pubkey); }
+    std::optional<int64_t> MaxSatisfactionElems() const override
+    {
+        if (m_tree) return {};
+        return 1;
+    }
+    std::unique_ptr<DescriptorImpl> Clone() const override { return std::make_unique<WpqDescriptor>(m_param_id, m_pubkey, m_tree ? m_tree->Clone() : nullptr); }
 };
+
+/** Qcoin: parse the TREE of wpq(HEXPK,TREE): `{TREE,TREE}` or `mldsa_all(HEXPK[,HEXPK...])`, nested at most 8 deep (the control block limit). */
+bool ParseWpqTree(std::span<const char>& expr, int depth, size_t pk_len, WpqTreeNode& out, std::string& error)
+{
+    if (script::Const("{", expr)) {
+        if (depth >= int(qcoin::v2::CONTROL_MAX_NODE_COUNT)) {
+            error = strprintf("wpq(): at most %u levels of braces", unsigned(qcoin::v2::CONTROL_MAX_NODE_COUNT));
+            return false;
+        }
+        out.left = std::make_unique<WpqTreeNode>();
+        out.right = std::make_unique<WpqTreeNode>();
+        if (!ParseWpqTree(expr, depth + 1, pk_len, *out.left, error)) return false;
+        if (!script::Const(",", expr)) {
+            error = "wpq(): expected ',' between the two halves of {TREE,TREE}";
+            return false;
+        }
+        if (!ParseWpqTree(expr, depth + 1, pk_len, *out.right, error)) return false;
+        if (!script::Const("}", expr)) {
+            error = "wpq(): expected '}' after the script tree";
+            return false;
+        }
+        return true;
+    }
+    auto leaf = script::Expr(expr);
+    if (!script::Func("mldsa_all", leaf)) {
+        error = "wpq(): a leaf must be mldsa_all(HEXPK[,HEXPK...]) (all listed keys sign, in this order)";
+        return false;
+    }
+    while (true) {
+        auto karg = script::Expr(leaf);
+        const std::string kstr(karg.begin(), karg.end());
+        if (!IsHex(kstr)) {
+            error = "mldsa_all(): public keys must be hex";
+            return false;
+        }
+        auto pk = ParseHex(kstr);
+        if (pk.size() != pk_len) {
+            error = strprintf("mldsa_all(): every key must be %u bytes, like the internal key, got %u", unsigned(pk_len), unsigned(pk.size()));
+            return false;
+        }
+        out.keys.push_back(std::move(pk));
+        if (leaf.empty()) break;
+        if (!script::Const(",", leaf)) {
+            error = "mldsa_all(): expected ',' between keys";
+            return false;
+        }
+    }
+    if (out.keys.size() > qcoin::v2::ATTESTATION_MAX_ENTRIES) {
+        error = strprintf("mldsa_all(): at most %u keys", unsigned(qcoin::v2::ATTESTATION_MAX_ENTRIES));
+        return false;
+    }
+    return true;
+}
 
 /** A parsed pk(P) descriptor. */
 class PKDescriptor final : public DescriptorImpl
@@ -2850,10 +2986,11 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         error = "A function is needed within P2WSH";
         return {};
     }
-    // Qcoin / Option B: wpq(HEXPK) key-path witness v2 ML-DSA output. Script-path
-    // form wpq(HEXPK,{TREE}) and the mldsa() key fragment are reserved, not implemented.
+    // Qcoin / Option B: wpq(HEXPK) key-path witness v2 ML-DSA output, and wpq(HEXPK,TREE) with a script tree of
+    // mldsa_all() leaves (doc/WALLET-PQC.md, "Script-path descriptors"). The mldsa() key fragment is reserved.
     if (ctx == ParseScriptContext::TOP && Func("wpq", expr)) {
-        std::string str(expr.begin(), expr.end());
+        auto arg = Expr(expr);
+        std::string str(arg.begin(), arg.end());
         if (!IsHex(str)) {
             error = "wpq(): ML-DSA public key must be hex";
             return {};
@@ -2869,6 +3006,20 @@ std::vector<std::unique_ptr<DescriptorImpl>> ParseScript(uint32_t& key_exp_index
         } else {
             error = strprintf("wpq(): public key must be %u bytes (ML-DSA-44), got %u", unsigned(qcoin::v2::MLDSA44_PUBKEY_LEN), unsigned(pk.size()));
             return {};
+        }
+        if (expr.size()) { // wpq(HEXPK,TREE): the script-path form
+            if (!Const(",", expr)) {
+                error = strprintf("wpq(): expected ',', got '%c'", expr[0]);
+                return {};
+            }
+            auto tree = std::make_unique<WpqTreeNode>();
+            if (!ParseWpqTree(expr, 0, pk.size(), *tree, error)) return {};
+            if (expr.size()) {
+                error = "wpq(): expected ')' after the script tree";
+                return {};
+            }
+            ret.emplace_back(std::make_unique<WpqDescriptor>(param_id, std::move(pk), std::move(tree)));
+            return ret;
         }
         ret.emplace_back(std::make_unique<WpqDescriptor>(param_id, std::move(pk)));
         return ret;
