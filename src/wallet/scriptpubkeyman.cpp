@@ -1595,6 +1595,14 @@ std::optional<PSBTError> DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTran
                     keys->Merge(std::move(*pk_keys));
                 }
             }
+
+            // Qcoin: a witness v2 script-path input names its signers by public key hash in the leaf; this wallet signs for
+            // the keys behind its own wpq() addresses (their key-path script is OP_2 <commit(pk_hash)>)
+            for (const CScript& key_script : PSBTMlDsaScriptPathKeyScripts(input)) {
+                if (std::unique_ptr<FlatSigningProvider> ml_keys = GetSigningProvider(key_script, /*include_private=*/options.sign)) {
+                    keys->Merge(std::move(*ml_keys));
+                }
+            }
         }
 
         const auto sign_result = SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/!options.sign, /*hide_origin=*/!options.bip32_derivs), psbtx, i, &txdata, options, /*out_sigdata=*/nullptr);

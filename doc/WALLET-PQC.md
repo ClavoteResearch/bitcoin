@@ -21,7 +21,7 @@ the shell tests in `fork/test/` on the default build unless marked otherwise.
 | Piece | Location | State |
 |---|---|---|
 | Witness v2 output (Option B) | `fork/src/script/witness_v2.h`, `script/interpreter.cpp` (`VerifyWitnessProgram`) | **Working.** `OP_2 <Q>` with `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| SHA256(pk))`. The spend's last witness element is the attestation `0x51 \|\| n \|\| param_id \|\| pk \|\| sig`; the interpreter checks the commitment and verifies the ML-DSA signature over `param_id \|\| pk_hash \|\| sighash` (BIP341 sighash, SIGHASH_DEFAULT) with context `BIP-MLDSAv2`. Param id `0x01` = ML-DSA-44 (3735-byte attestation). Signatures must be in FIPS 204 canonical hint encoding (`IsCanonicalMlDsaSignature`, checked before liboqs). Errors `SCRIPT_ERR_MLDSA_ATTESTATION` / `SCRIPT_ERR_MLDSA_SIG_ENCODING` / `SCRIPT_ERR_MLDSA_SIG`. Tests: `qcoin-v2-selftest`, `regtest_v2_canonical.sh`. |
-| Script path (`OP_CHECKMLDSAVERIFY`) | `fork/src/script/witness_v2.h` (section 5 helpers), `script/interpreter.cpp` (`VerifyWitnessProgram`, `EvalScript` case `OP_NOP4`), `fork/test/v2_scriptpath_tool.cpp` | **Working in consensus; wallet cannot create or sign it yet.** Witness `<inputs...> <leaf script> <control block> <attestation>`. Control block `leaf_version \|\| param_id \|\| internal pk_hash \|\| node*m` (34-byte base, at most 8 nodes); `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| pk_hash \|\| merkle_root)` with BIP 341 `TapLeaf`/`TapBranch` hashing. Leaf version `0xc0` runs with tapscript semantics and these changes: `OP_NOP4` (0xb3) is `OP_CHECKMLDSAVERIFY`, pops `<pk_hash:32> <i>`, requires `SHA256(pk_i) == pk_hash` and verifies entry *i* of the attestation over the BIP 342-style leaf sighash (`SigVersion::TAPSCRIPT`, so the leaf hash is committed); `OP_CHECKSIG`/`OP_CHECKSIGVERIFY`/`OP_CHECKSIGADD` and `OP_SUCCESSx` are invalid (`SCRIPT_ERR_BAD_OPCODE`); every attestation entry must be verified exactly once (`SCRIPT_ERR_MLDSA_ENTRY_UNUSED`, `SCRIPT_ERR_CHECKMLDSAVERIFY`). Unknown leaf versions stay upgradable as in BIP 341. The control-block layout and the exactly-once rule are this implementation's choices (the BIP's section 5 text was not available) and must be reconciled with the BIP before any public chain. `qcoin-v2-scriptpath` (both configurations, target not in the default build) derives keys from seeds, prints a 1-of-1 leaf output and signs a spend of it. Tests: `qcoin-v2-selftest` section 10, `regtest_v2_scriptpath.sh` (regtest; `CHAIN=qtctest` runs it on qtctest). |
+| Script path (`OP_CHECKMLDSAVERIFY`) | `fork/src/script/witness_v2.h` (section 5 helpers), `script/interpreter.cpp` (`VerifyWitnessProgram`, `EvalScript` case `OP_NOP4`), `fork/test/v2_scriptpath_tool.cpp` | **Working in consensus; multi-party signing through PSBTs works ("Script-path PSBTs"), the wallet cannot yet create the output itself (no `wpq(KEY,{TREE})` descriptor).** Witness `<inputs...> <leaf script> <control block> <attestation>`. Control block `leaf_version \|\| param_id \|\| internal pk_hash \|\| node*m` (34-byte base, at most 8 nodes); `Q = tagged_hash("MLDSAv2/Commit", param_id \|\| pk_hash \|\| merkle_root)` with BIP 341 `TapLeaf`/`TapBranch` hashing. Leaf version `0xc0` runs with tapscript semantics and these changes: `OP_NOP4` (0xb3) is `OP_CHECKMLDSAVERIFY`, pops `<pk_hash:32> <i>`, requires `SHA256(pk_i) == pk_hash` and verifies entry *i* of the attestation over the BIP 342-style leaf sighash (`SigVersion::TAPSCRIPT`, so the leaf hash is committed); `OP_CHECKSIG`/`OP_CHECKSIGVERIFY`/`OP_CHECKSIGADD` and `OP_SUCCESSx` are invalid (`SCRIPT_ERR_BAD_OPCODE`); every attestation entry must be verified exactly once (`SCRIPT_ERR_MLDSA_ENTRY_UNUSED`, `SCRIPT_ERR_CHECKMLDSAVERIFY`). Unknown leaf versions stay upgradable as in BIP 341. The control-block layout and the exactly-once rule are this implementation's choices (the BIP's section 5 text was not available) and must be reconciled with the BIP before any public chain. `qcoin-v2-scriptpath` (both configurations, target not in the default build) derives keys from seeds, prints a 1-of-1 leaf output and signs a spend of it. Tests: `qcoin-v2-selftest` section 10, `regtest_v2_scriptpath.sh` (regtest; `CHAIN=qtctest` runs it on qtctest). |
 | Value rule (ML-DSA-only) | `fork/src/consensus/pq_value.h`, `validation.cpp`, `Consensus::Params::fMlDsaOnlyValue` | **Working.** On regtest and `qtctest`, once mldsav2 is active every output with value must be `OP_2 <32>`; ordinary ECDSA outputs (P2PKH, P2WPKH, P2TR, bare multisig, ...) are consensus-invalid in blocks (coinbase included) and in the mempool (`bad-txns-output-not-mldsa`). Zero-value outputs are unrestricted (OP_RETURN, witness commitment). Wallet: `getnewaddress`/`getrawchangeaddress` refuse, recipients and custom change must be v2, change is derived as a fresh ML-DSA key, `-walletsigscheme` defaults to mldsa44 and `ecdsa` is rejected. Qcoin is therefore a separate coin, not a Bitcoin soft fork; the Bitcoin chain parameters still in the tree keep Bitcoin's rules. Test: `regtest_pq_only.sh`. |
 | Activation | `Consensus::DEPLOYMENT_MLDSA_V2` ("mldsav2"), `SCRIPT_VERIFY_MLDSA_V2`, `validation.cpp` | **Working.** Buried deployment: height 0 on regtest (override `-testactivationheight=mldsav2@N`) and `qtctest`; never on mainnet/testnet/signet. Before activation v2 inputs are anyone-can-spend for blocks and rejected by the mempool (`mempool-script-verify-flag-failed`); after it the flag is enforced in blocks and policy, and `AreInputsStandard` accepts v2. Shown by `getdeploymentinfo`. Test: `regtest_v2_activation.sh`. |
 | Legacy ECDSA path | `script/interpreter.cpp` (`VerifyECDSASignature`) | **Upstream again.** The first experiment (commit 13d6b525) routed every legacy ECDSA check through an ML-DSA-87 stub with a secp256k1 fallback; that routing, `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. Legacy inputs never touch liboqs. What makes Qcoin incompatible with Bitcoin is the value rule above, not the script rules. |
@@ -785,7 +785,7 @@ new genesis or a soft fork of the testnet.
 | Legacy ECDSA-path routing | **Done.** `VerifyECDSASignature` is upstream `pubkey.Verify` again; `fork/src/script/verify_stub.h` and the `QCOIN_ECDSA_FALLBACK` option are removed. `regtest_qtctest.sh` confirms an ordinary P2WPKH spend next to a v2 spend. | Yes (done) |
 | Canonical ML-DSA signature encoding | **Done.** `qcoin::v2::IsCanonicalMlDsaSignature` re-implements the FIPS 204 HintBitUnpack acceptance rules (cumulative hint counts non-decreasing and at most omega, strictly increasing indices per polynomial, zero padding) and runs before liboqs; failures are `SCRIPT_ERR_MLDSA_SIG_ENCODING`. Consensus therefore does not depend on a library version's strictness. `regtest_v2_canonical.sh` re-encodes a real spend's hint area and shows the node rejects it while the original confirms. | Yes (done) |
 | Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
-| Script path | **In progress.** Consensus done: `OP_CHECKMLDSAVERIFY` (0xb3) under leaf version 0xc0, control block `leaf_version \|\| param_id \|\| pk_hash \|\| nodes`, BIP 341 leaf/branch hashing, BIP 342-style leaf sighash, OP_SUCCESSx and OP_CHECKSIG* invalid in leaves, exactly-once verification of attestation entries; a 1-of-1 leaf spend confirms on regtest and qtctest via `qcoin-v2-scriptpath`. Open: the wallet (`wpq(KEY,{TREE})` descriptor, signer, PSBT fields), policy limits for leaf stack items, and reconciling the control-block layout with the BIP text. | No for a key-path testnet; the consensus rules are in before launch, so a later wallet does not need a soft fork |
+| Script path | **In progress.** Consensus done: `OP_CHECKMLDSAVERIFY` (0xb3) under leaf version 0xc0, control block `leaf_version \|\| param_id \|\| pk_hash \|\| nodes`, BIP 341 leaf/branch hashing, BIP 342-style leaf sighash, OP_SUCCESSx and OP_CHECKSIG* invalid in leaves, exactly-once verification of attestation entries; a 1-of-1 leaf spend confirms on regtest and qtctest via `qcoin-v2-scriptpath`. PSBT fields, aggregation and wallet signing are done (`regtest_v2_psbt_multisig.sh`). Open: the `wpq(KEY,{TREE})` descriptor so the wallet can create and recognise the output, policy limits for leaf stack items, and reconciling the control-block layout with the BIP text. | No for a key-path testnet; the consensus rules are in before launch, so a later wallet does not need a soft fork |
 | Checkpoints / assumevalid / `chainTxData` | Open. Set once the chain has a few thousand blocks; irrelevant at launch. | No |
 | Proof-of-work regime | Decided for now: RandomX ("RandomX proof of work"), nBits 2000ffff on `qtctest` (about 6 s per block on one CPU). Open: the real difficulty for a public chain. | No (changing it later means a new genesis) |
 | Dust and weight policy | Open. Dust threshold still assumes a 148-byte input; a v2 input is about 1 kvB. Worst-case per-block verification cost not benchmarked (BIP section 7). | No |
@@ -820,9 +820,60 @@ builds:
 - **Finalisation.** `PSBTInputSignedAndVerified` runs the consensus verifier on
   the final witness, so a bad attestation is rejected before extraction.
 
-Not done: a partial/aggregate form for a future multi-entry attestation, PSBT
-fields for the script path, and an exported secret-key format for offline
-signers (the secret is only ever in the wallet database).
+The script path (several attestations) has its own fields and flow, below ("Script-path PSBTs").
+Not done: an exported secret-key format for offline signers (the secret is only ever in the wallet database).
+
+### Script-path PSBTs (multi-party ML-DSA spends)
+
+A witness v2 script-path spend (`<leaf> <control block> <attestation>`) needs one attestation entry per key named in the
+leaf, and the keys belong to different parties. The PSBT carries the leaf, the control block and the entries gathered so
+far; `combinepsbt` is the aggregator, so no new role is needed. The key-path fields and behaviour above are unchanged.
+
+Three proprietary **input** fields (BIP 174 type `0xFC`, identifier `qcoin` = `71636f696e`):
+
+| Subtype | Key data | Value | Meaning |
+|---|---|---|---|
+| 1 | none | `leaf_version \|\| leaf script` | the leaf being spent (leaf version must be `0xc0`) |
+| 2 | none | control block: `leaf_version \|\| param_id \|\| internal pk_hash \|\| 32-byte nodes` (34 + 32m bytes, m <= 8) | the path to the commitment `Q` of the output |
+| 3 | `pk_hash` (32 bytes) | one attestation entry: `param_id \|\| ML-DSA public key \|\| signature` | the signature of the key whose hash is `pk_hash` over the leaf sighash; one field per signer |
+
+(subtype 0, unchanged, is the key-path public key.) The entry index of each key is not stored: it is the operand `i` of
+the leaf's `<pk_hash> <i> OP_CHECKMLDSAVERIFY` triple, and the finalizer writes the entries into the attestation
+(`0x51 || n || entry_0 || ... || entry_{n-1}`) in that order. A leaf names up to four keys. Fields serialize in
+the normal proprietary form (`PSBTProprietary`, ordered by key), so unknown software keeps them; `decodepsbt` shows them under
+`inputs[].proprietary`.
+
+Flow (the coordinator needs no wallet):
+
+1. **Create.** `createpsbt` spends the script-path coin, `utxoupdatepsbt` adds the UTXO, and the new RPC
+   `addpsbtmldsascriptpath <psbt> <input> <leaf_hex> <control_hex>` adds subtypes 1 and 2. It refuses a leaf and control
+   block that do not commit to the output being spent and a leaf that names no ML-DSA key; it replaces earlier script-path
+   data, including entries that signed another script.
+2. **Sign.** Each party runs `walletprocesspsbt` (or `SignPSBTInput` with any signing provider). For every key in the leaf
+   that the wallet holds and that has no entry yet, it signs the leaf sighash (BIP 341 hash with the BIP 342 extension,
+   `SIGHASH_DEFAULT`, `SigVersion::TAPSCRIPT`; the message is the section 6 message for that key) and adds a subtype 3 field.
+   A wallet holds a leaf key if it is the key behind one of its own `wpq()` addresses (`getnewmldsaaddress`): the wallet looks
+   up the key-path script `OP_2 <commit(pk_hash)>` of every `pk_hash` in the leaf. A wallet that holds no key of the leaf adds
+   nothing. The parties can pass one PSBT along (each adds its entry) or sign copies.
+3. **Aggregate.** `combinepsbt` merges the entries of the copies (the standard merge of proprietary fields).
+4. **Finalize.** `finalizepsbt`, or the last signer's `walletprocesspsbt`, assembles `<leaf> <control> <attestation>` into
+   `final_scriptwitness` once every index of the leaf has an entry. The finished witness is checked with the consensus
+   verifier (`PSBTInputSignedAndVerified`) before the input counts as final: a wrong or corrupted entry from another party
+   leaves the input unfinalized instead of producing an invalid transaction. The three field types are removed from a
+   finalized input.
+
+`fork/test/regtest_v2_psbt_multisig.sh` runs it on regtest with two wallets: a 2-of-2 leaf, one party signing and the other
+adding its attestation and finalizing (the witness is a 71-byte leaf, a 34-byte control block and a 7,468-byte attestation;
+the spend is about 2 kvB), then both parties signing copies that `combinepsbt` merges, with the refusals: one entry is
+not enough, a corrupted entry is not finalized, a script that does not commit to the output is rejected, and a wallet
+that is not named in the leaf adds nothing. `fork/test/v2_scriptpath_addr.py` computes the `scriptPubKey`, leaf and control
+block of an N-of-N leaf from the public key hashes (the wallet cannot yet build the output itself).
+
+Limits: one leaf per input (the control block selects it; only single-leaf trees are tested), leaf keys must be the keys behind the signers' own `wpq()` addresses (there is still no `wpq(KEY,{TREE})`
+descriptor, so a wallet cannot derive or recognise the script-path output itself), at most four entries, `SIGHASH_DEFAULT`
+only, and an entry is not verified when it is merged, only when the input is finalized. The internal key of the example
+outputs is the hash of a fixed string, so the key path is unusable (the commitment includes the Merkle root).
+
 
 ## HD derivation
 

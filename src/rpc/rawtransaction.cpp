@@ -1886,6 +1886,47 @@ static RPCMethod utxoupdatepsbt()
     };
 }
 
+static RPCMethod addpsbtmldsascriptpath()
+{
+    return RPCMethod{
+        "addpsbtmldsascriptpath",
+        "Qcoin: adds the leaf script and control block of a witness v2 script-path spend to an input of a PSBT, so that the\n"
+        "holders of the ML-DSA keys named in the leaf (<pk_hash> <i> OP_CHECKMLDSAVERIFY) can add their attestation entries\n"
+        "(walletprocesspsbt), entries can be merged (combinepsbt) and the input finalized (finalizepsbt).\n"
+        "If the input's UTXO is known (utxoupdatepsbt), the script and control block must commit to it.\n"
+        "Replaces earlier script-path data of the input, including entries that signed another script.\n",
+        {
+            {"psbt", RPCArg::Type::STR, RPCArg::Optional::NO, "The base64 string of the PSBT"},
+            {"input", RPCArg::Type::NUM, RPCArg::Optional::NO, "The index of the input to add the script path to"},
+            {"leaf_script", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The leaf script (hex)"},
+            {"control_block", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The control block: leaf_version || param_id || internal pk_hash || 32-byte nodes (hex)"},
+        },
+        RPCResult{RPCResult::Type::STR, "", "The base64-encoded partially signed transaction with the script path added"},
+        RPCExamples{HelpExampleCli("addpsbtmldsascriptpath", "\"psbt\" 0 \"20...b351\" \"c001...\"")},
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
+{
+    auto psbt_res{DecodeBase64PSBT(request.params[0].get_str())};
+    if (!psbt_res) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", util::ErrorString(psbt_res).original));
+    }
+    PartiallySignedTransaction psbtx{std::move(*psbt_res)};
+    std::string error;
+    const int index{request.params[1].getInt<int>()};
+    if (index < 0 || static_cast<size_t>(index) >= psbtx.inputs.size()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "input index out of range");
+    }
+    const std::vector<unsigned char> leaf{ParseHexV(request.params[2], "leaf_script")};
+    const std::vector<unsigned char> control{ParseHexV(request.params[3], "control_block")};
+    if (!SetPSBTMlDsaScriptPath(psbtx.inputs[index], leaf, control, error)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, error);
+    }
+    DataStream ssTx{};
+    ssTx << psbtx;
+    return EncodeBase64(ssTx);
+},
+    };
+}
+
 static RPCMethod joinpsbts()
 {
     return RPCMethod{
@@ -2181,6 +2222,7 @@ void RegisterRawTransactionRPCCommands(CRPCTable& t)
         {"rawtransactions", &createpsbt},
         {"rawtransactions", &converttopsbt},
         {"rawtransactions", &utxoupdatepsbt},
+        {"rawtransactions", &addpsbtmldsascriptpath},
         {"rawtransactions", &descriptorprocesspsbt},
         {"rawtransactions", &joinpsbts},
         {"rawtransactions", &analyzepsbt},

@@ -62,6 +62,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "setmocktime", 0, "timestamp" },
     { "mockscheduler", 0, "delta_time" },
     { "utxoupdatepsbt", 0, "psbt", ParamFormat::STRING },
+    { "addpsbtmldsascriptpath", 0, "psbt", ParamFormat::STRING },
+    { "addpsbtmldsascriptpath", 1, "input" },
     { "utxoupdatepsbt", 1, "descriptors" },
     { "generatetoaddress", 0, "nblocks" },
     { "generatetoaddress", 2, "maxtries" },

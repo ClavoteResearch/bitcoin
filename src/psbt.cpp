@@ -53,7 +53,268 @@ bool ParseMlDsaPubKeyField(const PSBTProprietary& p, uint8_t& param_id, std::vec
     pk.assign(p.value.begin() + 1, p.value.end());
     return true;
 }
+
+// Qcoin: witness v2 script-path fields (identifier "qcoin"), see doc/WALLET-PQC.md, "Script-path PSBTs":
+//   subtype 1, no key data : value = leaf_version || leaf script
+//   subtype 2, no key data : value = control block (leaf_version || param_id || internal pk_hash || 32-byte nodes)
+//   subtype 3, key data = pk_hash (32 bytes) : value = one attestation entry, param_id || public key || signature
+constexpr uint64_t QCOIN_PROP_SCRIPTPATH_LEAF = 1;
+constexpr uint64_t QCOIN_PROP_SCRIPTPATH_CONTROL = 2;
+constexpr uint64_t QCOIN_PROP_SCRIPTPATH_ENTRY = 3;
+
+PSBTProprietary MakeQcoinField(uint64_t subtype, std::span<const unsigned char> key_data, std::vector<unsigned char> value)
+{
+    PSBTProprietary p;
+    p.identifier = QCOIN_PROP_ID;
+    p.subtype = subtype;
+    DataStream k;
+    k << PSBT_IN_PROPRIETARY << p.identifier;
+    WriteCompactSize(k, p.subtype);
+    p.key.assign(UCharCast(k.data()), UCharCast(k.data()) + k.size());
+    p.key.insert(p.key.end(), key_data.begin(), key_data.end());
+    p.value = std::move(value);
+    return p;
+}
+
+const PSBTProprietary* FindQcoinField(const PSBTInput& input, uint64_t subtype)
+{
+    for (const auto& prop : input.m_proprietary) {
+        if (prop.identifier == QCOIN_PROP_ID && prop.subtype == subtype) return &prop;
+    }
+    return nullptr;
+}
+
+struct ScriptPathData {
+    uint8_t leaf_version{0};
+    CScript leaf;
+    std::vector<unsigned char> leaf_bytes;
+    std::vector<unsigned char> control;
+    uint8_t param_id{0};
+};
+
+bool GetScriptPathData(const PSBTInput& input, ScriptPathData& out)
+{
+    const PSBTProprietary* leaf = FindQcoinField(input, QCOIN_PROP_SCRIPTPATH_LEAF);
+    const PSBTProprietary* control = FindQcoinField(input, QCOIN_PROP_SCRIPTPATH_CONTROL);
+    if (!leaf || !control || leaf->value.size() < 2) return false;
+    if (!qcoin::v2::IsValidControlBlockSize(control->value.size())) return false;
+    out.leaf_version = leaf->value[0];
+    out.leaf_bytes.assign(leaf->value.begin() + 1, leaf->value.end());
+    out.leaf = CScript(out.leaf_bytes.begin(), out.leaf_bytes.end());
+    out.control = control->value;
+    out.param_id = out.control[1];
+    return out.control[0] == out.leaf_version && out.leaf_version == qcoin::v2::LEAF_VERSION_MLDSA;
+}
+
+/** The witness v2 program (Q) that the leaf and control block commit to. */
+uint256 ScriptPathProgram(const ScriptPathData& sp)
+{
+    uint256 internal_pk_hash;
+    std::copy(sp.control.begin() + 2, sp.control.begin() + 2 + 32, internal_pk_hash.begin());
+    const uint256 root = qcoin::v2::MerkleRootFromControl(sp.control, qcoin::v2::LeafHash(sp.leaf_version, sp.leaf_bytes));
+    return qcoin::v2::ComputeCommitment(sp.param_id, internal_pk_hash, std::span<const uint8_t>(root.begin(), root.size()));
+}
+
+/** The (pk_hash, entry index) pairs of the `<pk_hash> <i> OP_CHECKMLDSAVERIFY` triples of a leaf, in script order. */
+std::vector<std::pair<uint256, int>> LeafKeys(const CScript& leaf)
+{
+    std::vector<std::pair<uint256, int>> keys;
+    std::vector<unsigned char> hash_bytes;
+    int small_int{-1};
+    int stage{0}; // 0: nothing, 1: saw a 32-byte push, 2: and then a small integer
+    opcodetype op;
+    std::vector<unsigned char> data;
+    CScript::const_iterator it = leaf.begin();
+    while (it < leaf.end() && leaf.GetOp(it, op, data)) {
+        if (op == OP_NOP4) { // OP_CHECKMLDSAVERIFY inside a v2 leaf
+            if (stage == 2) {
+                uint256 h;
+                std::copy(hash_bytes.begin(), hash_bytes.end(), h.begin());
+                keys.emplace_back(h, small_int);
+            }
+            stage = 0;
+        } else if (op <= OP_PUSHDATA4 && data.size() == 32) {
+            hash_bytes = data;
+            stage = 1;
+        } else if (stage == 1 && (op == OP_0 || (op >= OP_1 && op <= OP_16))) {
+            small_int = op == OP_0 ? 0 : int(op) - int(OP_1) + 1;
+            stage = 2;
+        } else {
+            stage = 0;
+        }
+    }
+    return keys;
+}
+
+/** The leaf sighash of input `index` (BIP 341 hash with the BIP 342 extension, SIGHASH_DEFAULT). */
+bool ScriptPathSighash(const ScriptPathData& sp, const CMutableTransaction& tx, unsigned int index, const PrecomputedTransactionData& txdata, uint256& sighash)
+{
+    ScriptExecutionData execdata;
+    execdata.m_annex_init = true;
+    execdata.m_annex_present = false;
+    execdata.m_tapleaf_hash = qcoin::v2::LeafHash(sp.leaf_version, sp.leaf_bytes);
+    execdata.m_tapleaf_hash_init = true;
+    execdata.m_codeseparator_pos = 0xFFFFFFFFUL;
+    execdata.m_codeseparator_pos_init = true;
+    return SignatureHashSchnorr(sighash, execdata, tx, index, SIGHASH_DEFAULT, SigVersion::TAPSCRIPT, txdata, MissingDataBehavior::FAIL);
+}
+
+/**
+ * Qcoin: sign (with the keys the provider holds) and, when every entry of the leaf is present and `finalize` is set,
+ * assemble and verify the witness of a witness v2 script-path input. Returns INCOMPLETE until the input is finalized.
+ */
+util::Expected<void, PSBTError> SignMlDsaScriptPathInput(const SigningProvider& provider, PSBTInput& input, PartiallySignedTransaction& psbt, int index,
+                                                         const CMutableTransaction& tx, const PrecomputedTransactionData* txdata,
+                                                         const common::PSBTFillOptions& options, const CTxOut& utxo)
+{
+    input.witness_utxo = utxo; // a v2 spend is a witness spend
+    ScriptPathData sp;
+    if (!GetScriptPathData(input, sp)) return util::Unexpected{PSBTError::UNSUPPORTED};
+    int wv{0};
+    std::vector<unsigned char> wp;
+    if (!utxo.scriptPubKey.IsWitnessProgram(wv, wp) || wv != qcoin::v2::WITNESS_V2_VERSION) return util::Unexpected{PSBTError::UNSUPPORTED};
+    const uint256 q = ScriptPathProgram(sp);
+    if (!std::equal(q.begin(), q.end(), wp.begin())) return util::Unexpected{PSBTError::UNSUPPORTED}; // leaf and control block do not commit to this output
+    if (input.sighash_type && *input.sighash_type != SIGHASH_DEFAULT) return util::Unexpected{PSBTError::SIGHASH_MISMATCH};
+
+    const auto keys = LeafKeys(sp.leaf);
+    if (keys.empty() || keys.size() > qcoin::v2::ATTESTATION_MAX_ENTRIES) return util::Unexpected{PSBTError::UNSUPPORTED};
+
+    auto entry_for = [&](const uint256& pk_hash) -> const PSBTProprietary* {
+        for (const auto& prop : input.m_proprietary) {
+            if (prop.identifier != QCOIN_PROP_ID || prop.subtype != QCOIN_PROP_SCRIPTPATH_ENTRY) continue;
+            if (prop.key.size() >= 32 && std::equal(pk_hash.begin(), pk_hash.end(), prop.key.end() - 32)) return &prop;
+        }
+        return nullptr;
+    };
+
+    // Sign for every key of the leaf the provider holds and that has no entry yet.
+    if (options.sign && txdata) {
+        uint256 sighash;
+        bool have_sighash = false;
+        for (const auto& [pk_hash, entry_index] : keys) {
+            if (entry_for(pk_hash)) continue;
+            qcoin::pqc::MlDsaKeyPair kp;
+            if (!provider.GetMlDsaKey(pk_hash, kp)) continue;
+            if (qcoin::pqc::ParamIdFor(kp.scheme) != sp.param_id) { qcoin::pqc::WipeSecret(kp.sk); continue; }
+            if (!have_sighash) {
+                if (!ScriptPathSighash(sp, tx, index, *txdata, sighash)) { qcoin::pqc::WipeSecret(kp.sk); return util::Unexpected{PSBTError::INVALID_TX}; }
+                have_sighash = true;
+            }
+            const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(sp.param_id, pk_hash, sighash);
+            const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
+            std::vector<uint8_t> sig;
+            const bool ok = qcoin::pqc::MlDsaSignCtx(kp.scheme, kp.sk, msg, ctx, sig);
+            qcoin::pqc::WipeSecret(kp.sk);
+            if (!ok) continue;
+            std::vector<unsigned char> value;
+            value.push_back(sp.param_id);
+            value.insert(value.end(), kp.pk.begin(), kp.pk.end());
+            value.insert(value.end(), sig.begin(), sig.end());
+            input.m_proprietary.insert(MakeQcoinField(QCOIN_PROP_SCRIPTPATH_ENTRY, std::span<const unsigned char>(pk_hash.begin(), pk_hash.size()), std::move(value)));
+        }
+    }
+
+    if (!options.finalize || !txdata) return util::Unexpected{PSBTError::INCOMPLETE};
+
+    // Complete when every index 0..n-1 of the leaf has an entry; entries go into the attestation in index order.
+    int n_entries = 0;
+    for (const auto& [_, entry_index] : keys) n_entries = std::max(n_entries, entry_index + 1);
+    std::vector<const PSBTProprietary*> by_index(n_entries, nullptr);
+    for (const auto& [pk_hash, entry_index] : keys) {
+        if (const PSBTProprietary* e = entry_for(pk_hash)) by_index[entry_index] = e;
+    }
+    for (const PSBTProprietary* e : by_index) {
+        if (!e) return util::Unexpected{PSBTError::INCOMPLETE};
+    }
+    std::vector<uint8_t> attestation;
+    for (const PSBTProprietary* e : by_index) {
+        const auto& v = e->value;
+        const auto sizes = v.empty() ? std::nullopt : qcoin::v2::SizesFor(v[0]);
+        if (!sizes || v.size() != 1 + sizes->pk + sizes->sig) return util::Unexpected{PSBTError::INCOMPLETE};
+        const std::span<const uint8_t> pk(v.data() + 1, sizes->pk), sig(v.data() + 1 + sizes->pk, sizes->sig);
+        if (attestation.empty()) attestation = qcoin::v2::BuildAttestation(v[0], pk, sig);
+        else if (!qcoin::v2::AppendAttestationEntry(attestation, v[0], pk, sig)) return util::Unexpected{PSBTError::UNSUPPORTED};
+    }
+
+    // Set the witness and verify the whole input; a bad entry from another party must not produce a finalized input.
+    input.final_script_witness.stack = {sp.leaf_bytes, sp.control, attestation};
+    if (!PSBTInputSignedAndVerified(psbt, index, txdata)) {
+        input.final_script_witness.SetNull();
+        return util::Unexpected{PSBTError::INCOMPLETE};
+    }
+    for (auto it = input.m_proprietary.begin(); it != input.m_proprietary.end();) {
+        if (it->identifier == QCOIN_PROP_ID && it->subtype >= QCOIN_PROP_SCRIPTPATH_LEAF && it->subtype <= QCOIN_PROP_SCRIPTPATH_ENTRY) it = input.m_proprietary.erase(it);
+        else ++it;
+    }
+    return {};
+}
 } // namespace
+
+bool PSBTInputHasMlDsaScriptPath(const PSBTInput& input)
+{
+    ScriptPathData sp;
+    return GetScriptPathData(input, sp);
+}
+
+std::vector<CScript> PSBTMlDsaScriptPathKeyScripts(const PSBTInput& input)
+{
+    std::vector<CScript> scripts;
+    ScriptPathData sp;
+    if (!GetScriptPathData(input, sp)) return scripts;
+    for (const auto& [pk_hash, _] : LeafKeys(sp.leaf)) {
+        const uint256 q = qcoin::v2::ComputeCommitment(sp.param_id, pk_hash, {});
+        scripts.push_back(CScript() << OP_2 << std::vector<unsigned char>(q.begin(), q.end()));
+    }
+    return scripts;
+}
+
+bool SetPSBTMlDsaScriptPath(PSBTInput& input, const std::vector<unsigned char>& leaf_script, const std::vector<unsigned char>& control, std::string& error)
+{
+    if (!qcoin::v2::IsValidControlBlockSize(control.size())) {
+        error = "control block must be 34 bytes plus at most 8 nodes of 32 bytes";
+        return false;
+    }
+    if (control[0] != qcoin::v2::LEAF_VERSION_MLDSA) {
+        error = "control block leaf version must be 0xc0";
+        return false;
+    }
+    if (leaf_script.empty()) {
+        error = "empty leaf script";
+        return false;
+    }
+    std::vector<unsigned char> leaf_value;
+    leaf_value.push_back(control[0]);
+    leaf_value.insert(leaf_value.end(), leaf_script.begin(), leaf_script.end());
+    ScriptPathData sp;
+    sp.leaf_version = control[0];
+    sp.leaf_bytes = leaf_script;
+    sp.leaf = CScript(leaf_script.begin(), leaf_script.end());
+    sp.control = control;
+    sp.param_id = control[1];
+    if (LeafKeys(sp.leaf).empty()) {
+        error = "the leaf names no ML-DSA key (<pk_hash> <i> OP_CHECKMLDSAVERIFY)";
+        return false;
+    }
+    CTxOut utxo;
+    if (input.GetUTXO(utxo)) {
+        int wv{0};
+        std::vector<unsigned char> wp;
+        const uint256 q = ScriptPathProgram(sp);
+        if (!utxo.scriptPubKey.IsWitnessProgram(wv, wp) || wv != qcoin::v2::WITNESS_V2_VERSION || !std::equal(q.begin(), q.end(), wp.begin())) {
+            error = "the leaf script and control block do not commit to the output being spent";
+            return false;
+        }
+    }
+    // replace earlier values (and any stale entries: they signed a different script)
+    for (auto it = input.m_proprietary.begin(); it != input.m_proprietary.end();) {
+        if (it->identifier == QCOIN_PROP_ID && it->subtype >= QCOIN_PROP_SCRIPTPATH_LEAF && it->subtype <= QCOIN_PROP_SCRIPTPATH_ENTRY) it = input.m_proprietary.erase(it);
+        else ++it;
+    }
+    input.m_proprietary.insert(MakeQcoinField(QCOIN_PROP_SCRIPTPATH_LEAF, {}, std::move(leaf_value)));
+    input.m_proprietary.insert(MakeQcoinField(QCOIN_PROP_SCRIPTPATH_CONTROL, {}, control));
+    return true;
+}
 
 PartiallySignedTransaction::PartiallySignedTransaction(const CMutableTransaction& tx, uint32_t version) : m_version(version)
 {
@@ -751,6 +1012,12 @@ util::Expected<void, PSBTError> SignPSBTInput(const SigningProvider& provider, P
                 }
             }
         }
+    }
+
+    // Qcoin: a witness v2 input that carries script-path fields is signed with the keys named by its leaf and finalized
+    // from the attestation entries gathered in the PSBT (see SignMlDsaScriptPathInput)
+    if (is_qcoin_v2 && PSBTInputHasMlDsaScriptPath(input)) {
+        return SignMlDsaScriptPathInput(provider, input, psbt, index, tx, txdata, options, utxo);
     }
 
     // Get the sighash type

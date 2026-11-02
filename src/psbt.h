@@ -1633,6 +1633,18 @@ std::optional<PrecomputedTransactionData> PrecomputePSBTData(const PartiallySign
 /** Checks whether a PSBTInput is already signed by checking for non-null finalized fields. */
 bool PSBTInputSigned(const PSBTInput& input);
 
+/**
+ * Qcoin: witness v2 script-path spends with several ML-DSA attestations (doc/WALLET-PQC.md, "Script-path PSBTs").
+ * Three proprietary input fields (identifier "qcoin") carry the leaf script, the control block and one attestation
+ * entry per signer; combinepsbt merges entries, a wallet that holds a key named in the leaf adds its entry, and
+ * finalizepsbt (or the last signer) assembles the witness <leaf> <control> <attestation>.
+ */
+bool PSBTInputHasMlDsaScriptPath(const PSBTInput& input);
+/** The witness v2 key-path scripts (OP_2 <Q>) of the keys named by the leaf's OP_CHECKMLDSAVERIFY, to find signers. */
+std::vector<CScript> PSBTMlDsaScriptPathKeyScripts(const PSBTInput& input);
+/** Add the leaf script and control block to an input; checks the shape and, if the UTXO is known, that they commit to it. */
+bool SetPSBTMlDsaScriptPath(PSBTInput& input, const std::vector<unsigned char>& leaf_script, const std::vector<unsigned char>& control, std::string& error);
+
 /** Checks whether a PSBTInput is already signed by doing script verification using final fields. */
 bool PSBTInputSignedAndVerified(const PartiallySignedTransaction& psbt, unsigned int input_index, const PrecomputedTransactionData* txdata);
 
