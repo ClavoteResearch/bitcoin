@@ -1030,6 +1030,51 @@ script path `wpq(KEY,{TREE})`. PSBT, encrypted key storage, HD derivation,
 the canonical-encoding check and the deployment flag are all in place (see
 "Current status").
 
+## Canonical ML-DSA signature encoding
+
+A witness v2 attestation entry is valid only if its signature has the canonical FIPS 204 encoding. This is a consensus rule,
+not a standardness rule: a transaction with a non-canonical signature is rejected by the mempool
+(`mempool-script-verify-flag-failed (Non-canonical ML-DSA signature encoding)`) and a block that contains one is invalid
+(`block-script-verify-flag-failed (Non-canonical ML-DSA signature encoding)`, checked with `generateblock`). The script error
+is `SCRIPT_ERR_MLDSA_SIG_ENCODING`.
+
+**Where.** `GenericTransactionSignatureChecker::CheckMlDsaSignature` (`src/script/interpreter.cpp`) runs
+`qcoin::v2::IsCanonicalMlDsaSignature` (`fork/src/script/witness_v2.h`) right after the size checks and *before* the sighash
+and the liboqs verification, for every attestation entry that is verified: the key path (`SigVersion::TAPROOT`) and each
+entry of a script path (`SigVersion::TAPSCRIPT`, one call per `OP_CHECKMLDSAVERIFY`); `VerifyMlDsa` applies it again as a backstop
+for other callers. It is part of the rules enforced once `mldsav2` is active (`SCRIPT_VERIFY_MLDSA_V2`), so there is no
+non-standard-but-valid window, and it does not depend on how strict a given liboqs version is.
+
+**The rules (ML-DSA-44, `param_id` 0x01: k = 4 polynomials, omega = 80 hints).** A signature is 2,420 bytes,
+`sigma = c_tilde (32 bytes) || z (2,304 bytes) || h (84 bytes)`, where `h = y[0..83]`: 80 hint-index bytes followed by 4 cumulative
+counts (`y[80 + i]` = number of hints in polynomials 0..i). The signature is canonical exactly when it has the accepted
+form of FIPS 204 Algorithm 21 (`HintBitUnpack`):
+
+1. the length is exactly 2,420 bytes (a signature of another length is rejected earlier, as `SCRIPT_ERR_MLDSA_ATTESTATION`);
+2. the cumulative counts are non-decreasing: each `y[80 + i]` is at least the previous count (the first at least 0);
+3. no count exceeds omega: `y[80 + i] <= 80` (hint-count limit);
+4. within each polynomial the hint indices are strictly increasing: for `j` in `[count_{i-1} + 1, count_i)`, `y[j - 1] < y[j]`
+   (canonical hint ordering; an index is one byte, so it is always below the 256 coefficients);
+5. every unused index byte is zero: `y[j] == 0` for `j` from the last count up to 79 (zero padding).
+
+Together they give every hint vector exactly one accepted encoding. `c_tilde` and `z` carry no redundancy: `z` is fixed-width,
+its range (`||z||_inf < gamma1 - beta`) is enforced by the verifier itself, and `c_tilde` is compared byte for byte. The
+experimental ML-DSA-87 parameter set (`param_id` 0x7f, experimental builds only) uses the same rules with k = 8 and omega = 75.
+
+**Why.** Without rule 5, a third party could re-encode a valid signature (for example by setting an unused index byte to 1,
+which leaves the hint vector unchanged) and change the witness of a transaction that spends someone else's coin: the txid is
+unchanged and the wtxid changes, so relayed or aggregated transactions could be malleated, and with a library that
+accepts such encodings consensus would depend on its version. The same holds for each entry of a multi-party script-path witness.
+
+**What is unaffected.** Signatures produced by liboqs (and by the wallet and `qcoin-v2-scriptpath`) are always canonical, so every
+valid spend keeps working; no other part of the ML-DSA verification, the sighash, RandomX or key rotation is involved.
+
+Tests: `qcoin-v2-selftest` section 9 (the five rules and the truncated signature, each with the `SCRIPT_ERR_MLDSA_SIG_ENCODING`
+result through the verifier) and 10i-nc0 / 10i-nc1 (a non-canonical signature in either entry of a two-entry script-path
+attestation); `fork/test/regtest_v2_canonical.sh` (key path: the mutated spend is rejected by the mempool and by a block, the
+original confirms); `fork/test/regtest_v2_canonical_scriptpath.sh` (2-of-2 script path: each entry mutated in turn, rejected as a
+transaction and in a block, the original confirms).
+
 ## Sighash and signature message (BIP section 6)
 
 What changed in this step:

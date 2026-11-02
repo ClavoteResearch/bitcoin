@@ -367,6 +367,22 @@ int main()
             auto swapped = BuildAttestation(B.param_id, Span(f.kp.pk), B.SignWith(f.kp, B.LeafSighash()));
             AppendAttestationEntry(swapped, B.param_id, Span(leafkey.pk), B.SignWith(leafkey, B.LeafSighash()));
             Check(!B.Verify({B.LeafBytes(), B.control, swapped}, err) && err == SCRIPT_ERR_CHECKMLDSAVERIFY, "10i'. entries in the wrong order -> SCRIPT_ERR_CHECKMLDSAVERIFY");
+            // non-canonical signature encoding inside a script-path attestation: set the last unused hint-index slot of
+            // either entry to 1 (same hint vector, different bytes); the encoding rule applies to every entry
+            const auto sizes44 = qcoin::v2::SizesFor(B.param_id);
+            const auto hp44 = qcoin::v2::HintParamsFor(B.param_id);
+            for (int entry = 0; entry < 2; ++entry) {
+                auto malleated = att;
+                const size_t stride = 1 + sizes44->pk + sizes44->sig;
+                const size_t sig_start = 2 + entry * stride + 1 + sizes44->pk;
+                const size_t slot = sig_start + sizes44->sig - (hp44->omega + hp44->k) + hp44->omega - 1;
+                if (malleated[slot] != 0) continue; // all hint slots in use (astronomically unlikely)
+                malleated[slot] = 1;
+                ScriptError merr{SCRIPT_ERR_OK};
+                Check(!B.Verify({B.LeafBytes(), B.control, malleated}, merr) && merr == SCRIPT_ERR_MLDSA_SIG_ENCODING,
+                      entry == 0 ? "10i-nc0. script path: non-canonical signature in entry 0 -> SCRIPT_ERR_MLDSA_SIG_ENCODING"
+                                 : "10i-nc1. script path: non-canonical signature in entry 1 -> SCRIPT_ERR_MLDSA_SIG_ENCODING");
+            }
         }
         // C: the same entry verified twice
         {

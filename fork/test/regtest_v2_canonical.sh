@@ -51,6 +51,12 @@ say "reject-reason: ${RES#* }"
 ERR=$($CLI sendrawtransaction "$BADHEX" 2>&1 || true)
 check "$(printf '%s' "$ERR" | grep -c 'Non-canonical ML-DSA signature encoding')" "1" "sendrawtransaction of the malleated spend fails with the same reason"
 
+say "== consensus, not only policy: a block that contains the malleated spend is invalid =="
+H0=$($CLI getblockcount)
+GB=$($CLI generateblock "$M" "[\"$BADHEX\"]" 2>&1 || true)
+check "$(printf '%s' "$GB" | grep -c 'block-script-verify-flag-failed (Non-canonical ML-DSA signature encoding)')" "1" "generateblock refuses the block (block-script-verify-flag-failed: Non-canonical ML-DSA signature encoding)"
+check "$($CLI getblockcount)" "$H0" "the chain did not advance"
+
 say "== the canonical original is still valid and confirms =="
 TX=$($CLI sendrawtransaction "$HEX")
 check "${#TX}" "64" "original spend accepted"
