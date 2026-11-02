@@ -1,0 +1,10 @@
+# liboqs pin for Qcoin (doc/LIBOQS-PIN.md). Sourced by fork/contrib/build-liboqs.sh and read by src/CMakeLists.txt:
+# keep it KEY=VALUE, one per line, no shell code.
+LIBOQS_VERSION=0.14.0
+LIBOQS_TAG=0.14.0
+LIBOQS_COMMIT=94b421ebb82405c843dba4e9aa521a56ee5a333d
+LIBOQS_REPO=https://github.com/open-quantum-safe/liboqs.git
+# Portable build: no CPU-specific code and no run-time AVX2 dispatch. The AVX2 ML-DSA verifier of this release carries two
+# pq-crystals bugs (June 2026) that make it accept some invalid signatures; the portable reference code does not, and
+# consensus must not depend on the CPU (see doc/LIBOQS-PIN.md).
+LIBOQS_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON -DOQS_DIST_BUILD=OFF -DOQS_OPT_TARGET=generic -DOQS_USE_OPENSSL=ON
