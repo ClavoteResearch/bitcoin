@@ -21,7 +21,7 @@ namespace qcoin::pow {
  * Chains that never reach RandomX allocate nothing.
  *
  * Full mode (SetRandomXFullMode(true), node option -randomxfull): in addition a 2 GiB dataset per cached key
- * (about 4.5 GiB for two keys with their caches). A dataset is built by a background thread pool the first time a key
+ * (three keys are cached in full mode, about 6.9 GiB with their caches; light mode keeps two). A dataset is built by a background thread pool the first time a key
  * is used; until it is ready hashing falls back to the cache, so a new epoch never stalls validation. Safe to call from
  * many threads. Throws std::runtime_error if RandomX cannot allocate its cache or virtual machine.
  */
@@ -29,10 +29,19 @@ void RandomXHash(const unsigned char* key, size_t key_len, const unsigned char* 
 
 /** Enable the full-dataset mode. Call once at start-up, before the first hash. */
 void SetRandomXFullMode(bool full);
+bool RandomXFullMode();
+
+/**
+ * Full mode only (a no-op in light mode): start building the cache and dataset of `key` in the background, so that they
+ * are ready when the first block of the key's epoch arrives. Cheap to call repeatedly: the same key is only started once.
+ * In full mode three keys are cached (the previous epoch, the current one and the one being prepared: about 6.9 GiB),
+ * in light mode two.
+ */
+void PrepareRandomXKey(const unsigned char* key, size_t key_len);
 
 struct RandomXStatus {
     bool full_mode{false};
-    size_t keys_cached{0};       //!< keys with a built cache (at most 2)
+    size_t keys_cached{0};       //!< keys with a built cache (at most 2 in light mode, 3 in full mode)
     size_t datasets_ready{0};    //!< of those, keys whose 2 GiB dataset is built and in use (full mode only)
     size_t datasets_building{0}; //!< of those, keys whose dataset is still being built
     uint64_t hashes_light{0};    //!< hashes computed with a cache since start

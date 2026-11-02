@@ -250,36 +250,45 @@ be mixed across nodes, and the consensus rules, the 2,048-block epoch and the ke
 | | Light (default) | Full (`-randomxfull`) |
 |---|---|---|
 | Memory per key | 256 MiB cache | 256 MiB cache + 2 GiB dataset (about 2.3 GiB) |
-| Peak memory for the node | about 0.5 GiB (two keys) | **about 4.6 GiB** (two keys: the current and the previous epoch, 4 GiB of datasets plus two caches; measured peak resident size 4,750 MiB with both datasets built, checked by `regtest_randomx_full.sh`) |
+| Keys cached | 2 (current and previous epoch) | 3 (previous, current and the next epoch, pre-built) |
+| Peak memory for the node | about 0.5 GiB (two caches) | **about 6.9 GiB** (three datasets of 2 GiB plus three 256 MiB caches; measured peak resident size 7,100 MiB with three datasets built, checked by `regtest_randomx_full.sh`; 4.6 GiB while only two keys exist, i.e. until the second key block, height 4096) |
 | Start-up cost | cache built on first use, about a second | the same, then the dataset is built in the background (about 50 s with 16 threads) |
 | Speed (`qtc-randomx-scan`, 16 threads) | about 48 hashes/s per thread, 383/s in total | 1,295/s in total once the dataset is ready |
 
 Enable it with `-randomxfull=1` (or `randomxfull=1` in `bitcoin.conf`, in the `[qtctest]` or `[regtest]` section for
 those chains). A dataset is built by a background thread pool (all cores, about 50 s with 16 threads) the first time a key
 is used; **until it is ready the node hashes with the cache, so a new epoch never stalls validation**. At an epoch
-boundary the new key's cache is built (about a second) and its dataset follows in the background; the key evicted
-from the two-key window releases its memory when its last user finishes (an unfinished dataset build is stopped).
+boundary nothing has to be built: **the next epoch's dataset is pre-built.** The key block of an epoch (a multiple of
+2,048) is known 65 blocks before the first block that uses its key (`nRandomXKeyLag` = 64), and when it becomes the tip
+the node starts building that key's cache (about a second, on a helper thread) and dataset (about 50 s with 16 threads, in
+the background), long before the epoch's first block arrives (65 blocks, about 11 hours at 10 minutes per block). So the
+node holds three keys in full mode: the previous epoch (kept for reorgs), the current one, and the next one being
+prepared; the least recently used key is evicted when a fourth is added, and it releases its memory when its last user
+finishes (an unfinished dataset build is stopped). The pre-build runs from `Chainstate::UpdateTip` (`PrebuildRandomXKey`),
+so it also happens after a restart that finds the tip inside the 65-block window; during initial block download, header
+verification runs ahead of the tip and may need a key before it is prepared, in which case it hashes with the cache until
+the dataset is ready. Light mode never pre-builds and keeps two keys.
 If the dataset cannot be allocated the key simply stays in light mode.
 
 Checking the mode: the log prints `RandomX: full-dataset verification (...)` or `RandomX: light-mode verification (...)`
 at start-up, and `getblockchaininfo` has a `randomx` object: `mode` (`light` or `full`), `active` (whether the next block
-is proven with RandomX), `keys_cached` (at most 2), `datasets_ready` and `datasets_building` (full mode), and the
+is proven with RandomX), `keys_cached` (at most 2 in light mode, 3 in full mode), `datasets_ready` and `datasets_building` (full mode), and the
 counters `hashes_light` / `hashes_full` (hashes computed with a cache / a dataset since the node started).
 
 Mining tools: `generatetoaddress` and `generateblock` use the node's mode (the node hashes with the dataset once it is
 ready). `qtc-randomx-scan` has its own switch, `QTC_RX_FULL=1` (or `QTC_RX_FAST=1`; the dataset is built for the key in
 `QTC_RX_KEY`, about 2.3 GiB and about 50 s to start with 16 threads), and `qtc-gbt-miner.py --randomxfull` (alias `--fast`) sets it.
-`fork/test/regtest_randomx_full.sh` mines across the epoch boundary with `-randomxfull=1`, checks the mode reporting, that
-both datasets are built and used, an ML-DSA spend after the rotation, a full-mode scanner check, and that a light-mode node
-re-validates the same chain.
+`fork/test/regtest_randomx_full.sh` runs with `-randomxfull=1` across two key blocks (heights 2048 and 4096): the mode
+reporting; the next key's dataset built at height 2048 and still ready, with nothing building, when the boundary (height
+2113) is reached; the first new-key block hashed with it; an ML-DSA spend after the rotation; a full-mode scanner check;
+three cached datasets and the peak memory after block 4096; and a light-mode node that re-validates the same chain.
 
 Known limits of this design, to settle before a public launch:
 - the key rotation protects against a dataset that is built once and reused, but a miner can still prepare the
   next epoch's dataset in advance (the key block is known 64 blocks before it is used, as in Monero).
 - a header whose parent is unknown is only range-checked during the pre-check; the real proof is checked when
   its chain is accepted (or, for a presync chain, as it is processed).
-- the full-dataset mode (see "Full-dataset mode") is optional and off by default; it is built for the current and
-  the previous key only, and a new key's dataset is not prepared before the key is first used.
+- the full-dataset mode (see "Full-dataset mode") is optional and off by default.
 - the upstream unit and functional tests mine regtest blocks with SHA-256d and no longer work on regtest
   (this project uses the shell regtests in `fork/test`).
 - the proof of a block is not re-checked when it is read back from disk or the index is loaded.
@@ -726,7 +735,7 @@ new genesis or a soft fork of the testnet.
 | Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
 | Script path | **In progress.** Consensus done: `OP_CHECKMLDSAVERIFY` (0xb3) under leaf version 0xc0, control block `leaf_version \|\| param_id \|\| pk_hash \|\| nodes`, BIP 341 leaf/branch hashing, BIP 342-style leaf sighash, OP_SUCCESSx and OP_CHECKSIG* invalid in leaves, exactly-once verification of attestation entries; a 1-of-1 leaf spend confirms on regtest and qtctest via `qcoin-v2-scriptpath`. Open: the wallet (`wpq(KEY,{TREE})` descriptor, signer, PSBT fields), policy limits for leaf stack items, and reconciling the control-block layout with the BIP text. | No for a key-path testnet; the consensus rules are in before launch, so a later wallet does not need a soft fork |
 | Checkpoints / assumevalid / `chainTxData` | Open. Set once the chain has a few thousand blocks; irrelevant at launch. | No |
-| Proof-of-work regime | Decided for now: RandomX ("RandomX proof of work"), nBits 2000ffff on `qtctest` (about 6 s per block on one CPU). Open: pre-building the next epoch's dataset, and the real difficulty for a public chain. | No (changing it later means a new genesis) |
+| Proof-of-work regime | Decided for now: RandomX ("RandomX proof of work"), nBits 2000ffff on `qtctest` (about 6 s per block on one CPU). Open: the real difficulty for a public chain. | No (changing it later means a new genesis) |
 | Dust and weight policy | Open. Dust threshold still assumes a 148-byte input; a v2 input is about 1 kvB. Worst-case per-block verification cost not benchmarked (BIP section 7). | No |
 | Dedicated destination / output type | Open. v2 addresses are `WitnessUnknown{2,Q}`; `getnewaddress`/`-addresstype` cannot produce them, `getnewmldsaaddress` does. | No |
 | Derivation spec | Open. Single-level HMAC scheme ("HD derivation") works and is deterministic, but is not a published path; `encryptwallet` rotates the root, so users must back up after encrypting. | No (document the backup rule for testers) |

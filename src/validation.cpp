@@ -2929,6 +2929,9 @@ void Chainstate::UpdateTip(const CBlockIndex* pindexNew)
         m_mempool->AddTransactionsUpdated(1);
     }
 
+    // Qcoin: full-dataset RandomX mode builds the next epoch's dataset once its key block is known
+    PrebuildRandomXKey(m_chainman.GetConsensus(), pindexNew);
+
     std::vector<bilingual_str> warning_messages;
     if (!m_chainman.IsInitialBlockDownload()) {
         auto bits = m_chainman.m_versionbitscache.CheckUnknownActivations(pindexNew, m_chainman.GetParams());

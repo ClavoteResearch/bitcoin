@@ -185,6 +185,20 @@ int RandomXKeyHeight(const Consensus::Params& params, int height)
     return (height - lag - 1) & ~(epoch - 1);
 }
 
+void PrebuildRandomXKey(const Consensus::Params& params, const CBlockIndex* tip)
+{
+    if (!tip || params.RandomXHeight == std::numeric_limits<int>::max() || !qcoin::pow::RandomXFullMode()) return;
+    const int epoch{params.nRandomXKeyEpoch}, lag{params.nRandomXKeyLag};
+    const int key_height{tip->nHeight - tip->nHeight % epoch};
+    if (key_height == 0) return;                                  // the genesis key is built on first use
+    if (tip->nHeight - key_height > lag) return;                  // this epoch's key is already in use
+    if (key_height + lag + 1 < params.RandomXHeight) return;      // RandomX does not apply yet at its first use
+    const CBlockIndex* key_block{tip->GetAncestor(key_height)};
+    if (!key_block) return;
+    const uint256 key{key_block->GetBlockHash()};
+    qcoin::pow::PrepareRandomXKey(key.begin(), key.size());
+}
+
 RandomXKeyLookup RandomXKeyLookupFromIndex(const CBlockIndex* prev)
 {
     return [prev](int key_height) -> std::optional<uint256> {

@@ -41,6 +41,13 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
  * 4161-6208 the hash of block 4096, and so on (Monero's seed-height rule).
  */
 int RandomXKeyHeight(const Consensus::Params& params, int height);
+/**
+ * Qcoin, full-dataset mode only: called when the tip changes. From the key block of an epoch (a multiple of the epoch
+ * length) until the first block that uses its key, nRandomXKeyLag + 1 blocks later, start building that key's cache
+ * and dataset in the background, so the dataset is ready when the epoch's first block is validated. No-op in light mode
+ * and on chains that never reach RandomX.
+ */
+void PrebuildRandomXKey(const Consensus::Params& params, const CBlockIndex* tip);
 /** Returns the identifier of the block at a key height on the chain being extended, or nullopt if unknown. */
 using RandomXKeyLookup = std::function<std::optional<uint256>(int key_height)>;
 /** Key lookup along the chain that ends at `prev` (the parent of the block being checked). */

@@ -1420,7 +1420,7 @@ RPCMethod getblockchaininfo()
                 {
                     {RPCResult::Type::STR, "mode", "\"light\" (256 MiB cache per key, default) or \"full\" (2 GiB dataset per key, -randomxfull)"},
                     {RPCResult::Type::BOOL, "active", "whether the next block is proven with RandomX (as opposed to double SHA-256)"},
-                    {RPCResult::Type::NUM, "keys_cached", "RandomX keys with a built cache (at most 2: the current and the previous epoch)"},
+                    {RPCResult::Type::NUM, "keys_cached", "RandomX keys with a built cache (at most 2 in light mode: the current and the previous epoch; 3 in full mode: plus the next epoch, pre-built)"},
                     {RPCResult::Type::NUM, "datasets_ready", "keys whose full dataset is built and in use (full mode)"},
                     {RPCResult::Type::NUM, "datasets_building", "keys whose full dataset is still being built in the background (full mode)"},
                     {RPCResult::Type::NUM, "hashes_light", "RandomX hashes computed with a cache since the node started"},

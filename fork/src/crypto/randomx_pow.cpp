@@ -66,7 +66,8 @@ struct CacheHolder {
     }
 };
 
-constexpr size_t MAX_CACHED_KEYS = 2;
+// Light mode: the current and the previous epoch. Full mode adds the next epoch, prepared in advance.
+size_t MaxCachedKeys() { return g_full_mode.load() ? 3 : 2; }
 
 std::mutex g_cache_mutex;
 std::list<std::pair<std::string, std::shared_ptr<CacheHolder>>> g_caches; // most recently used first
@@ -94,7 +95,7 @@ std::shared_ptr<CacheHolder> GetCache(const unsigned char* key, size_t key_len)
     if (g_full_mode.load()) holder->StartDatasetBuild();
     g_caches.emplace_front(k, holder);
     // An evicted holder lives until its last user finishes; its dataset build is stopped when it is destroyed.
-    while (g_caches.size() > MAX_CACHED_KEYS) g_caches.pop_back();
+    while (g_caches.size() > MaxCachedKeys()) g_caches.pop_back();
     return holder;
 }
 
@@ -163,6 +164,39 @@ void RandomXHash(const unsigned char* key, size_t key_len, const unsigned char* 
 }
 
 void SetRandomXFullMode(bool full) { g_full_mode.store(full); }
+bool RandomXFullMode() { return g_full_mode.load(); }
+
+namespace {
+// Prepares one key at a time on a helper thread (building a cache takes about a second and must not stall the caller,
+// which is the validation thread holding cs_main). The dataset itself is built by GetCache's own background threads.
+struct Preparer {
+    std::mutex mutex;
+    std::string last_key;
+    std::thread thread;
+    ~Preparer()
+    {
+        if (thread.joinable()) thread.join();
+    }
+};
+Preparer g_preparer;
+} // namespace
+
+void PrepareRandomXKey(const unsigned char* key, size_t key_len)
+{
+    if (!g_full_mode.load()) return;
+    const std::string k(reinterpret_cast<const char*>(key), key_len);
+    std::lock_guard<std::mutex> lock(g_preparer.mutex);
+    if (k == g_preparer.last_key) return;
+    g_preparer.last_key = k;
+    if (g_preparer.thread.joinable()) g_preparer.thread.join(); // the previous key was prepared an epoch ago
+    g_preparer.thread = std::thread([k] {
+        try {
+            GetCache(reinterpret_cast<const unsigned char*>(k.data()), k.size()); // builds the cache and starts the dataset
+        } catch (const std::exception&) {
+            // out of memory: the key is built on first use instead
+        }
+    });
+}
 
 RandomXStatus GetRandomXStatus()
 {
