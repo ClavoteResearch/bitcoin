@@ -12,6 +12,11 @@
 //   qcoin-v2-scriptpath spend <internal_seed_hex> <leaf_seed_hex> <txid> <vout> <amount_sat> <dest_spk_hex> <send_sat> [bad]
 //       prints the signed raw transaction (hex) spending that output through the
 //       leaf with the leaf key; "bad" corrupts the signature (expect rejection).
+//   qcoin-v2-scriptpath address2 <internal_seed_hex> <leaf1_seed_hex> <leaf2_seed_hex>
+//   qcoin-v2-scriptpath spend2 <internal_seed_hex> <leaf1_seed_hex> <leaf2_seed_hex> <txid> <vout> <amount_sat> <dest_spk_hex> <send_sat> [bad]
+//       the 2-of-2 variant: leaf  <pk_hash1> OP_0 OP_CHECKMLDSAVERIFY <pk_hash2> OP_1 OP_CHECKMLDSAVERIFY OP_1
+//       with a two-entry attestation (entry 0 = leaf key 1, entry 1 = leaf key 2); "bad" corrupts the
+//       second signature.
 #include "../src/script/witness_v2.h"
 
 #include <consensus/amount.h>
@@ -72,19 +77,31 @@ std::string ToHex(std::span<const uint8_t> v)
 std::string ToHex(const uint256& h) { return ToHex(std::span<const uint8_t>(h.begin(), h.size())); }
 
 struct Tree {
-    qcoin::pqc::MlDsaKeyPair internal, leafkey;
-    uint256 internal_pk_hash, leaf_pk_hash, leaf_hash, q;
+    qcoin::pqc::MlDsaKeyPair internal;
+    std::vector<qcoin::pqc::MlDsaKeyPair> leafkeys; //!< 1 key: <h> OP_0 CMV OP_1; 2 keys: 2-of-2 over entries 0 and 1
+    uint256 internal_pk_hash, leaf_pk_hash, leaf_pk_hash2, leaf_hash, q;
     CScript leaf, spk;
     std::vector<uint8_t> control;
 
-    bool Build(std::span<const uint8_t> seed_internal, std::span<const uint8_t> seed_leaf)
+    bool Build(std::span<const uint8_t> seed_internal, const std::vector<std::vector<uint8_t>>& seed_leaves)
     {
         using namespace qcoin::v2;
         if (!qcoin::pqc::MlDsaKeygenFromSeed(qcoin::pqc::SigScheme::MLDSA44, seed_internal, internal)) return false;
-        if (!qcoin::pqc::MlDsaKeygenFromSeed(qcoin::pqc::SigScheme::MLDSA44, seed_leaf, leafkey)) return false;
+        leafkeys.resize(seed_leaves.size());
+        std::vector<uint256> hashes;
+        for (size_t i = 0; i < seed_leaves.size(); ++i) {
+            if (!qcoin::pqc::MlDsaKeygenFromSeed(qcoin::pqc::SigScheme::MLDSA44, seed_leaves[i], leafkeys[i])) return false;
+            hashes.push_back(PubKeyHash(Span(leafkeys[i].pk)));
+        }
         internal_pk_hash = PubKeyHash(Span(internal.pk));
-        leaf_pk_hash = PubKeyHash(Span(leafkey.pk));
-        leaf = SingleKeyLeaf(leaf_pk_hash, 0);
+        leaf_pk_hash = hashes[0];
+        if (hashes.size() > 1) leaf_pk_hash2 = hashes[1];
+        if (hashes.size() == 1) {
+            leaf = SingleKeyLeaf(hashes[0], 0);
+        } else {
+            leaf = CScript() << std::vector<unsigned char>(hashes[0].begin(), hashes[0].end()) << OP_0 << OP_CHECKMLDSAVERIFY
+                             << std::vector<unsigned char>(hashes[1].begin(), hashes[1].end()) << OP_1 << OP_CHECKMLDSAVERIFY << OP_1;
+        }
         leaf_hash = LeafHash(LEAF_VERSION_MLDSA, Span(leaf));
         // One leaf: the Merkle root is the leaf hash and the control block carries no nodes.
         q = ComputeCommitment(PARAM_ID_MLDSA44, internal_pk_hash, std::span<const uint8_t>(leaf_hash.begin(), leaf_hash.size()));
@@ -98,7 +115,9 @@ int Usage()
 {
     std::fprintf(stderr,
                  "usage: qcoin-v2-scriptpath address <internal_seed_hex32> <leaf_seed_hex32>\n"
-                 "       qcoin-v2-scriptpath spend <internal_seed_hex32> <leaf_seed_hex32> <txid> <vout> <amount_sat> <dest_spk_hex> <send_sat> [bad]\n");
+                 "       qcoin-v2-scriptpath spend <internal_seed_hex32> <leaf_seed_hex32> <txid> <vout> <amount_sat> <dest_spk_hex> <send_sat> [bad]\n"
+                 "       qcoin-v2-scriptpath address2 <internal_seed_hex32> <leaf1_seed_hex32> <leaf2_seed_hex32>\n"
+                 "       qcoin-v2-scriptpath spend2 <internal_seed_hex32> <leaf1_seed_hex32> <leaf2_seed_hex32> <txid> <vout> <amount_sat> <dest_spk_hex> <send_sat> [bad]\n");
     return 2;
 }
 
@@ -107,15 +126,27 @@ int Usage()
 int main(int argc, char** argv)
 {
     if (argc < 4) return Usage();
-    const std::string cmd = argv[1];
+    std::string cmd = argv[1];
+    const bool two = cmd == "address2" || cmd == "spend2";
+    if (two) cmd = cmd.substr(0, cmd.size() - 1);
+    const int nleaf = two ? 2 : 1;
+    if (argc < 3 + nleaf) return Usage();
     const auto seed_i = FromHex(argv[2]);
-    const auto seed_l = FromHex(argv[3]);
-    if (!seed_i || !seed_l || seed_i->size() != qcoin::pqc::MLDSA_SEED_LEN || seed_l->size() != qcoin::pqc::MLDSA_SEED_LEN) {
+    std::vector<std::vector<uint8_t>> seeds_l;
+    bool seeds_ok = seed_i && seed_i->size() == qcoin::pqc::MLDSA_SEED_LEN;
+    for (int i = 0; i < nleaf && seeds_ok; ++i) {
+        const auto sl = FromHex(argv[3 + i]);
+        seeds_ok = sl && sl->size() == qcoin::pqc::MLDSA_SEED_LEN;
+        if (seeds_ok) seeds_l.push_back(*sl);
+    }
+    if (!seeds_ok) {
         std::fprintf(stderr, "seeds must be 32-byte hex strings\n");
         return 2;
     }
+    argv += nleaf - 1; // the remaining positional arguments are at the 1-of-1 offsets
+    argc -= nleaf - 1;
     Tree t;
-    if (!t.Build(*seed_i, *seed_l)) {
+    if (!t.Build(*seed_i, seeds_l)) {
         std::fprintf(stderr, "ML-DSA-44 keygen from seed failed\n");
         return 1;
     }
@@ -123,6 +154,7 @@ int main(int argc, char** argv)
         std::printf("spk=%s\nleaf=%s\ncontrol=%s\nleaf_pk_hash=%s\nq=%s\n",
                     ToHex(Span(t.spk)).c_str(), ToHex(Span(t.leaf)).c_str(), ToHex(t.control).c_str(),
                     ToHex(t.leaf_pk_hash).c_str(), ToHex(t.q).c_str());
+        if (two) std::printf("leaf_pk_hash2=%s\n", ToHex(t.leaf_pk_hash2).c_str());
         return 0;
     }
     if (cmd != "spend" || argc < 9) return Usage();
@@ -162,22 +194,31 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "sighash failed\n");
         return 1;
     }
-    const std::vector<uint8_t> msg = qcoin::v2::BuildSignatureMessage(qcoin::v2::PARAM_ID_MLDSA44, t.leaf_pk_hash, sighash);
     const std::span<const uint8_t> ctx(reinterpret_cast<const uint8_t*>(qcoin::v2::SIGNATURE_CONTEXT), qcoin::v2::SIGNATURE_CONTEXT_LEN);
-    std::vector<uint8_t> sig;
-    const bool signed_ok = qcoin::pqc::MlDsaSignCtx(qcoin::pqc::SigScheme::MLDSA44, Span(t.leafkey.sk), msg, ctx, sig);
-    qcoin::pqc::WipeSecret(t.leafkey.sk);
+    // One signature per leaf key, all over the same leaf sighash; the message binds each key's own pk_hash.
+    std::vector<std::vector<uint8_t>> sigs(t.leafkeys.size());
+    bool signed_ok = true;
+    for (size_t i = 0; i < t.leafkeys.size(); ++i) {
+        const uint256 pkh = qcoin::v2::PubKeyHash(Span(t.leafkeys[i].pk));
+        const std::vector<uint8_t> m = qcoin::v2::BuildSignatureMessage(qcoin::v2::PARAM_ID_MLDSA44, pkh, sighash);
+        signed_ok &= qcoin::pqc::MlDsaSignCtx(qcoin::pqc::SigScheme::MLDSA44, Span(t.leafkeys[i].sk), m, ctx, sigs[i]);
+        qcoin::pqc::WipeSecret(t.leafkeys[i].sk);
+    }
     qcoin::pqc::WipeSecret(t.internal.sk);
     if (!signed_ok) {
         std::fprintf(stderr, "ML-DSA sign failed\n");
         return 1;
     }
-    if (corrupt) sig[100] ^= 0x01;
+    if (corrupt) sigs.back()[100] ^= 0x01;
 
     auto& stack = tx.vin[0].scriptWitness.stack;
     stack.emplace_back(t.leaf.begin(), t.leaf.end());
     stack.push_back(t.control);
-    stack.push_back(qcoin::v2::BuildAttestation(qcoin::v2::PARAM_ID_MLDSA44, Span(t.leafkey.pk), sig));
+    std::vector<uint8_t> att = qcoin::v2::BuildAttestation(qcoin::v2::PARAM_ID_MLDSA44, Span(t.leafkeys[0].pk), sigs[0]);
+    for (size_t i = 1; i < t.leafkeys.size(); ++i) {
+        qcoin::v2::AppendAttestationEntry(att, qcoin::v2::PARAM_ID_MLDSA44, Span(t.leafkeys[i].pk), sigs[i]);
+    }
+    stack.push_back(std::move(att));
 
     ScriptError err{SCRIPT_ERR_OK};
     MutableTransactionSignatureChecker checker(&tx, 0, amount, txdata, MissingDataBehavior::FAIL);

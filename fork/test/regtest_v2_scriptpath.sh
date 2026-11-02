@@ -2,7 +2,9 @@
 # Qcoin / Option B end-to-end test of a witness v2 *script-path* spend: an output whose
 # commitment covers a single leaf  <pk_hash> OP_0 OP_CHECKMLDSAVERIFY OP_1  is funded by the
 # wallet and spent with a witness built by qcoin-v2-scriptpath (the wallet signs key paths
-# only). A key-path spend is made alongside so both paths confirm in the same block.
+# only). A key-path spend is made alongside so both paths confirm in the same block. A second
+# output with a 2-of-2 leaf  <pk_hash1> OP_0 OP_CHECKMLDSAVERIFY <pk_hash2> OP_1 OP_CHECKMLDSAVERIFY OP_1
+# is then funded and spent with a two-entry attestation.
 # Usage: regtest_v2_scriptpath.sh [path/to/build/bin]
 #        CHAIN=qtctest regtest_v2_scriptpath.sh [bin]   runs the same on qtctest (about 6 minutes:
 #        101 blocks at ~3 s each; loopback only, ports 29853/29854).
@@ -76,6 +78,38 @@ check "$($CLI getrawtransaction "$KP" true | py 'import sys,json; print(json.loa
 check "$($W getreceivedbyaddress "$DEST" 1)" "9.99900000" "wallet received 9.999 from the script-path spend"
 check "$($CLI gettxout "$FUND" "$VOUT" | wc -c)" "0" "the script-path coin is spent"
 check "$($CLI getblockcount)" "103" "height 103"
+
+say "== 2-of-2 script path: leaf <pk_hash1> OP_0 CMV <pk_hash2> OP_1 CMV OP_1, two-entry attestation =="
+SEED_L1=$(printf '33%.0s' $(seq 1 32)); SEED_L2=$(printf '44%.0s' $(seq 1 32))
+eval "$($TOOL address2 "$SEED_I" "$SEED_L1" "$SEED_L2" | sed 's/^/S2_/')"
+check "${#S2_leaf}" "142" "2-of-2 leaf script is 71 bytes"
+check "$S2_leaf" "20${S2_leaf_pk_hash}00b320${S2_leaf_pk_hash2}51b351" "leaf script is <h1> OP_0 CMV <h2> OP_1 CMV OP_1"
+check "${S2_spk:0:4}" "5220" "scriptPubKey is OP_2 <32 bytes>"
+check "${#S2_control}" "68" "control block is 34 bytes (single leaf, no Merkle nodes)"
+ADDR2=$($CLI decodescript "$S2_spk" | py 'import sys,json; print(json.load(sys.stdin)["address"])')
+check "${ADDR2:0:${#HRP}}" "$HRP" "2-of-2 address is bech32m witness v2"
+FUND2=$($W sendtoaddress "$ADDR2" 10)
+check "${#FUND2}" "64" "2-of-2 funding txid"
+mine 1
+VOUT2=$($CLI getrawtransaction "$FUND2" true | py 'import sys,json; d=json.load(sys.stdin); print([i for i,v in enumerate(d["vout"]) if v["scriptPubKey"]["hex"]==sys.argv[1]][0])' "$S2_spk")
+check "$($CLI gettxout "$FUND2" "$VOUT2" | py 'import sys,json; d=json.load(sys.stdin); print(d["confirmations"], "%.8f" % d["value"])')" "1 10.00000000" "2-of-2 coin confirmed, 10 coins"
+DEST2=$($W getnewmldsaaddress dest2)
+DEST2_SPK=$($CLI validateaddress "$DEST2" | py 'import sys,json; print(json.load(sys.stdin)["scriptPubKey"])')
+BAD2=$($TOOL spend2 "$SEED_I" "$SEED_L1" "$SEED_L2" "$FUND2" "$VOUT2" 1000000000 "$DEST2_SPK" 999900000 bad 2>/dev/null)
+R2=$($CLI sendrawtransaction "$BAD2" 2>&1) || true
+check "$(printf '%s' "$R2" | grep -c 'Invalid ML-DSA signature')" "1" "corrupted second signature is rejected by the mempool"
+RAW2=$($TOOL spend2 "$SEED_I" "$SEED_L1" "$SEED_L2" "$FUND2" "$VOUT2" 1000000000 "$DEST2_SPK" 999900000 2>"$D/tool2.err")
+say "tool: $(cat "$D/tool2.err")"
+check "$($CLI testmempoolaccept "[\"$RAW2\"]" | py 'import sys,json; d=json.load(sys.stdin)[0]; print(d["allowed"], d.get("reject-reason","-"))')" "True -" "testmempoolaccept allows the 2-of-2 spend"
+SP2=$($CLI sendrawtransaction "$RAW2" 2>&1) || true
+check "${#SP2}" "64" "2-of-2 spend accepted into the mempool"
+check "$($CLI getrawtransaction "$SP2" true | py 'import sys,json; w=json.load(sys.stdin)["vin"][0]["txinwitness"]; print(len(w), len(w[0])//2, len(w[1])//2, len(w[2])//2, w[2][:6])')" "3 71 34 7468 510201" "witness: leaf 71 B, control 34 B, attestation 7468 B (0x51, n=2, param 0x01)"
+say "2-of-2 spend vsize=$($CLI getrawtransaction "$SP2" true | py 'import sys,json; print(json.load(sys.stdin)["vsize"])')"
+mine 1
+check "$($CLI getrawtransaction "$SP2" true | py 'import sys,json; print(json.load(sys.stdin)["confirmations"])')" "1" "2-of-2 spend confirmed in a block"
+check "$($W getreceivedbyaddress "$DEST2" 1)" "9.99900000" "wallet received 9.999 from the 2-of-2 spend"
+check "$($CLI gettxout "$FUND2" "$VOUT2" | wc -c)" "0" "the 2-of-2 coin is spent"
+check "$($CLI getblockcount)" "105" "height 105"
 
 $CLI stop >/dev/null 2>&1; sleep 1
 rm -rf "$D"
