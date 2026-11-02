@@ -1,0 +1,3 @@
+RandomX v1.2.1 (tevador/RandomX, commit 102f8acf90a7649ada410de5499a7ec62e49e1da), BSD-3-Clause, see LICENSE.
+Vendored for Qcoin proof of work. Changes against upstream: src/tests is not included, and
+CMakeLists.txt stops before the randomx-tests / randomx-codegen / randomx-benchmark executables. Sources are unmodified.

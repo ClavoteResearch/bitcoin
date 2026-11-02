@@ -145,7 +145,9 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams)) {
+                // Qcoin: the SHA-256d check is cheap; RandomX heights are not re-proven on every start (they were
+                // proven when the header was accepted), so a node with a large chain starts in seconds.
+                if (pindexNew->nHeight < consensusParams.RandomXHeight && !CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams)) {
                     LogError("%s: CheckProofOfWork failed: %s\n", __func__, pindexNew->ToString());
                     return false;
                 }
@@ -1067,8 +1069,9 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
 
     const auto block_hash{block.GetHash()};
 
-    // Check the header
-    if (!CheckProofOfWork(block_hash, block.nBits, GetConsensus())) {
+    // Check the header. Qcoin: only where RandomX can never apply; a RandomX proof is not recomputed on every read
+    // (the block was proven when it was accepted, and the caller's expected hash is still checked above).
+    if (GetConsensus().RandomXHeight == std::numeric_limits<int>::max() && !CheckProofOfWork(block_hash, block.nBits, GetConsensus())) {
         LogError("Errors in block header at %s while reading block", pos.ToString());
         return false;
     }

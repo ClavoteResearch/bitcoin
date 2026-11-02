@@ -3857,8 +3857,11 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
 
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
-    // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))
+    // Check proof of work matches claimed amount. Qcoin: where RandomX can activate, the hash function depends on the
+    // block height, which this context-free check does not have; AcceptBlockHeader() then performs the check (every
+    // block passes through it before CheckBlock() results are used).
+    if (fCheckPOW && consensusParams.RandomXHeight == std::numeric_limits<int>::max() &&
+        !CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
 
     return true;
@@ -4048,10 +4051,16 @@ void ChainstateManager::GenerateCoinbaseCommitment(CBlock& block, const CBlockIn
     UpdateUncommittedBlockStructures(block, pindexPrev);
 }
 
-bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams)
+bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, std::optional<int> first_height)
 {
-    return std::ranges::all_of(headers,
-                               [&](const auto& header) { return CheckProofOfWork(header.GetHash(), header.nBits, consensusParams); });
+    // Qcoin: the hash function depends on the height. all_of stops at the first failure, so an invalid header costs
+    // one proof-of-work evaluation, not one per header.
+    int i{0};
+    return std::ranges::all_of(headers, [&](const auto& header) {
+        const std::optional<int> height{first_height ? std::optional<int>{*first_height + i} : std::nullopt};
+        ++i;
+        return CheckBlockHeaderPoW(header, height, consensusParams);
+    });
 }
 
 bool IsBlockMutated(const CBlock& block, bool check_witness_root)
@@ -4262,6 +4271,11 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
         if (pindexPrev->nStatus & BLOCK_FAILED_VALID) {
             LogDebug(BCLog::VALIDATION, "header %s has prev block invalid: %s\n", hash.ToString(), block.hashPrevBlock.ToString());
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-prevblk");
+        }
+        // Qcoin: proof of work with the hash function of this height (SHA-256d, or RandomX from RandomXHeight)
+        if (!CheckBlockHeaderPoW(block, pindexPrev->nHeight + 1, GetConsensus())) {
+            LogDebug(BCLog::VALIDATION, "%s: CheckBlockHeaderPoW failed at height %d: %s\n", __func__, pindexPrev->nHeight + 1, hash.ToString());
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
         }
         if (!ContextualCheckBlockHeader(block, state, *this, pindexPrev)) {
             LogDebug(BCLog::VALIDATION, "%s: Consensus::ContextualCheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());

@@ -84,6 +84,9 @@ void CChainParams::ApplyDeploymentOptions(const DeploymentOptions& opts)
         case Consensus::BuriedDeployment::DEPLOYMENT_MLDSA_V2:
             consensus.MLDSAv2Height = int{height};
             break;
+        case Consensus::BuriedDeployment::DEPLOYMENT_RANDOMX:
+            consensus.RandomXHeight = int{height};
+            break;
         case Consensus::BuriedDeployment::DEPLOYMENT_HEIGHTINCB:
             consensus.BIP34Height = int{height};
             break;
@@ -608,6 +611,7 @@ public:
         consensus.CSVHeight = 1;    // Always active unless overridden
         consensus.SegwitHeight = 0; // Always active unless overridden
         consensus.MLDSAv2Height = 0; // Qcoin: always active on regtest unless overridden with -testactivationheight=mldsav2@<n>
+        consensus.RandomXHeight = 0; // Qcoin: RandomX from genesis on regtest unless overridden with -testactivationheight=randomx@<n>
         consensus.fMlDsaOnlyValue = true; // Qcoin: once mldsav2 is active, only ML-DSA outputs may carry value
         consensus.nMaxBlockWeight = QCOIN_MAX_BLOCK_WEIGHT; // Qcoin: 8 MWU blocks for ~3.7 kB ML-DSA signatures
         consensus.MinBIP9WarningHeight = 0;
@@ -702,12 +706,11 @@ public:
  * v2 ML-DSA deployment (DEPLOYMENT_MLDSA_V2) active from genesis. Addresses use
  * HRP "tq" (tq1q... legacy segwit, tq1z... ML-DSA witness v2).
  *
- * Proof of work: powLimit 000000ffff... (nBits 0x1e00ffff, 1/256 of Bitcoin
- * difficulty 1, about 16.8 million hashes per block), retargeting on, testnet-style
- * min-difficulty blocks allowed. Blocks can still be produced with generatetoaddress
- * given a large maxtries (about a second each on a modern CPU); the genesis is no
- * longer trivially re-minable. Seed nodes, assumevalid/minimum chain work and
- * checkpoints remain pre-launch decisions tracked in doc/WALLET-PQC.md.
+ * Proof of work: RandomX from genesis (RandomXHeight 0; the genesis block is exempt). powLimit
+ * 00ffff... (nBits 0x2000ffff, about 256 RandomX hashes per block: about 6 s
+ * with generatetoaddress in light mode, one thread), retargeting on, testnet-style min-difficulty
+ * blocks allowed. Seed nodes, assumevalid/minimum chain work and checkpoints remain
+ * pre-launch decisions tracked in doc/WALLET-PQC.md.
  */
 class CQtcTestParams : public CChainParams
 {
@@ -725,10 +728,11 @@ public:
         consensus.CSVHeight = 1;
         consensus.SegwitHeight = 0;
         consensus.MLDSAv2Height = 0; // Qcoin: witness v2 ML-DSA rules enforced from genesis
+        consensus.RandomXHeight = 0; // Qcoin: RandomX proof of work from genesis (the genesis block itself is exempt)
         consensus.fMlDsaOnlyValue = true; // Qcoin: only ML-DSA outputs may carry value (separate coin, not a Bitcoin soft fork)
         consensus.nMaxBlockWeight = QCOIN_MAX_BLOCK_WEIGHT; // Qcoin: 8 MWU blocks for ~3.7 kB ML-DSA signatures
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"000000ffff000000000000000000000000000000000000000000000000000000"}; // nBits 0x1e00ffff
+        consensus.powLimit = uint256{"00ffff0000000000000000000000000000000000000000000000000000000000"}; // nBits 0x2000ffff (about 256 RandomX hashes per block)
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true; // testnet-style: fall back to powLimit after 2x spacing
@@ -757,10 +761,10 @@ public:
         m_assumed_chain_state_size = 1;
 
         const CScript genesisOutputScript = CScript() << "04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"_hex << OP_CHECKSIG;
-        // Mined with fork/tools/mine-genesis.py --nbits 1e00ffff --time 1761782400 (lowest valid nonce).
-        genesis = CreateGenesisBlock("Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis", genesisOutputScript, 1761782400, 6739749, 0x1e00ffff, 1, 50 * COIN);
+        // Mined with fork/tools/mine-genesis.py --nbits 2000ffff --time 1761782400 (lowest valid SHA-256d nonce; the genesis block is exempt from the RandomX check).
+        genesis = CreateGenesisBlock("Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis", genesisOutputScript, 1761782400, 551, 0x2000ffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437"});
+        assert(consensus.hashGenesisBlock == uint256{"0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b"});
         assert(genesis.hashMerkleRoot == uint256{"951bd97f5c87145947cf54618d588de8c47b88c329991c4e21502ef52046c4b6"});
 
         vFixedSeeds.clear(); // TODO(launch): add seed nodes before announcing the network

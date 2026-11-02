@@ -169,7 +169,13 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHash(), block.nBits, chainman.GetConsensus()) && !chainman.m_interrupt) {
+    // Qcoin: the proof-of-work hash depends on the height of the block being mined (SHA-256d or RandomX)
+    int pow_height{0};
+    {
+        LOCK(cs_main);
+        if (const CBlockIndex* prev{chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock)}) pow_height = prev->nHeight + 1;
+    }
+    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckBlockHeaderPoW(block, pow_height, chainman.GetConsensus()) && !chainman.m_interrupt) {
         ++block.nNonce;
         --max_tries;
     }
@@ -1040,6 +1046,8 @@ static RPCMethod getblocktemplate()
     result.pushKV("coinbasevalue", block_template->block.vtx[0]->vout[0].nValue);
     result.pushKV("longpollid", tip.GetHex() + ToString(nTransactionsUpdatedLast));
     result.pushKV("target", hashTarget.GetHex());
+    // Qcoin: which hash function proves this template's block (the 80-byte header is hashed either way)
+    result.pushKV("powalgo", pindexPrev->nHeight + 1 >= consensusParams.RandomXHeight ? "randomx" : "sha256d");
     result.pushKV("mintime", GetMinimumTime(pindexPrev, consensusParams.DifficultyAdjustmentInterval()));
     result.pushKV("mutable", std::move(aMutable));
     result.pushKV("noncerange", "00000000ffffffff");

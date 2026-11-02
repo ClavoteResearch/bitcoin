@@ -9,6 +9,7 @@
 #include <consensus/params.h>
 
 #include <cstdint>
+#include <optional>
 
 class CBlockHeader;
 class CBlockIndex;
@@ -31,6 +32,20 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&);
+
+/**
+ * Qcoin: the proof-of-work hash of a header at the given height: the double SHA-256 (the block hash) below
+ * Consensus::Params::RandomXHeight, RandomX over the 80 serialized header bytes at and above it. Throws
+ * std::runtime_error if RandomX is needed and cannot allocate its cache.
+ */
+uint256 GetBlockPoWHash(const CBlockHeader& header, const Consensus::Params&, int height);
+/**
+ * Qcoin: check a header's proof of work at the given height (nBits range, target comparison). The genesis block
+ * is exempt once RandomX applies to height 0. With no height (headers whose parent is unknown, used only for the
+ * anti-DoS pre-check of a headers message) the header is accepted if it satisfies the hash function of any height
+ * that is possible on this chain.
+ */
+bool CheckBlockHeaderPoW(const CBlockHeader& header, std::optional<int> height, const Consensus::Params&);
 bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Params&);
 
 /**

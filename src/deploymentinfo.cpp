@@ -31,6 +31,8 @@ std::string DeploymentName(Consensus::BuriedDeployment dep)
         return "segwit";
     case Consensus::DEPLOYMENT_MLDSA_V2:
         return "mldsav2";
+    case Consensus::DEPLOYMENT_RANDOMX:
+        return "randomx";
     } // no default case, so the compiler can warn about missing cases
     return "";
 }
@@ -49,6 +51,8 @@ std::optional<Consensus::BuriedDeployment> GetBuriedDeployment(const std::string
         return Consensus::BuriedDeployment::DEPLOYMENT_CSV;
     } else if (name == "mldsav2") {
         return Consensus::BuriedDeployment::DEPLOYMENT_MLDSA_V2;
+    } else if (name == "randomx") {
+        return Consensus::BuriedDeployment::DEPLOYMENT_RANDOMX;
     }
     return std::nullopt;
 }

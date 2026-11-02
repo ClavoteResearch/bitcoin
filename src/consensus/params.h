@@ -35,8 +35,11 @@ enum BuriedDeployment : int16_t {
     // Qcoin / Option B: witness v2 ML-DSA attestation outputs (SCRIPT_VERIFY_MLDSA_V2).
     // Buried (height-based) activation; see doc/WALLET-PQC.md.
     DEPLOYMENT_MLDSA_V2,
+    // Qcoin: RandomX proof of work. Blocks at or above this height are proven with RandomX over the block
+    // header instead of double SHA-256; see doc/WALLET-PQC.md ("RandomX proof of work").
+    DEPLOYMENT_RANDOMX,
 };
-constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_MLDSA_V2; }
+constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_RANDOMX; }
 
 enum DeploymentPos : uint16_t {
     DEPLOYMENT_TESTDUMMY,
@@ -120,6 +123,10 @@ struct Params {
      * in this tree, true on the Qcoin chains (regtest, qtctest).
      */
     bool fMlDsaOnlyValue{false};
+    /** Qcoin: first block height proven with RandomX (the 80-byte header hashed with RandomX, compared to the
+     * target as before) instead of double SHA-256. 0 on regtest and qtctest; INT_MAX (never) on the Bitcoin
+     * chains kept in this tree, so they are unaffected. Override: -testactivationheight=randomx@<n> on regtest. */
+    int RandomXHeight{std::numeric_limits<int>::max()};
     /** Qcoin: maximum block weight (BIP 141 units). 4,000,000 on the Bitcoin chains kept in this tree,
      * QCOIN_MAX_BLOCK_WEIGHT (8,000,000) on the Qcoin chains, because a witness v2 spend carries a 3.7 kB signature. */
     unsigned int nMaxBlockWeight{4'000'000};
@@ -170,6 +177,8 @@ struct Params {
             return SegwitHeight;
         case DEPLOYMENT_MLDSA_V2:
             return MLDSAv2Height;
+        case DEPLOYMENT_RANDOMX:
+            return RandomXHeight;
         } // no default case, so the compiler can warn about missing cases
         return std::numeric_limits<int>::max();
     }

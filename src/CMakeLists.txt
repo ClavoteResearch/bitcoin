@@ -73,6 +73,22 @@ message(STATUS "Qcoin: liboqs include=${OQS_INCLUDE_DIR} lib=${OQS_LIBRARY}")
 option(QCOIN_WITNESS_V2_EXPERIMENTAL "Build experimental extras for the segwit v2 ML-DSA path: non-BIP ML-DSA-87 param_id 0x7f and qcoin-v2-selftest (activation itself is DEPLOYMENT_MLDSA_V2)" OFF)
 message(STATUS "Qcoin: QCOIN_WITNESS_V2_EXPERIMENTAL=${QCOIN_WITNESS_V2_EXPERIMENTAL}")
 
+# Qcoin: RandomX proof of work. v1.2.1 is vendored in fork/src/crypto/randomx; the default (portable) architecture
+# is used, hardware AES and JIT are detected at run time. Light mode (256 MiB cache) verifies; the nonce scanner
+# qtc-randomx-scan can use the 2 GiB dataset.
+set(ARCH default CACHE STRING "RandomX architecture (default: portable build, features detected at run time)" FORCE)
+add_subdirectory(${PROJECT_SOURCE_DIR}/fork/src/crypto/randomx ${CMAKE_CURRENT_BINARY_DIR}/randomx EXCLUDE_FROM_ALL)
+add_library(qcoin_randomx STATIC EXCLUDE_FROM_ALL
+  ${PROJECT_SOURCE_DIR}/fork/src/crypto/randomx_pow.cpp
+)
+target_include_directories(qcoin_randomx PUBLIC ${PROJECT_SOURCE_DIR}/fork/src)
+target_include_directories(qcoin_randomx PRIVATE ${PROJECT_SOURCE_DIR}/fork/src/crypto)
+target_link_libraries(qcoin_randomx PRIVATE core_interface PUBLIC randomx)
+# Standalone nonce scanner for the RandomX miners (fork/tools/qtc-gbt-miner.py)
+add_executable(qtc-randomx-scan EXCLUDE_FROM_ALL ${PROJECT_SOURCE_DIR}/fork/tools/qtc-randomx-scan.cpp)
+target_include_directories(qtc-randomx-scan PRIVATE ${PROJECT_SOURCE_DIR}/fork/src)
+target_link_libraries(qtc-randomx-scan PRIVATE qcoin_randomx Threads::Threads)
+
 # Qcoin: wallet-side PQC scheme switch and liboqs ML-DSA keygen/sign stubs
 add_library(qcoin_pqc STATIC EXCLUDE_FROM_ALL
   ${PROJECT_SOURCE_DIR}/fork/src/pqc/pqc.cpp
@@ -101,7 +117,7 @@ target_link_libraries(bitcoin_consensus
     secp256k1
 )
 target_include_directories(bitcoin_consensus PUBLIC ${OQS_INCLUDE_DIR})
-target_link_libraries(bitcoin_consensus PUBLIC ${OQS_LIBRARY})
+target_link_libraries(bitcoin_consensus PUBLIC ${OQS_LIBRARY} qcoin_randomx)
 if(QCOIN_WITNESS_V2_EXPERIMENTAL)
   target_compile_definitions(bitcoin_consensus PUBLIC QCOIN_WITNESS_V2_EXPERIMENTAL)
   # Self-test: build, sign and verify a key-path witness v2 spend end to end.

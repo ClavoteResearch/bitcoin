@@ -3,11 +3,18 @@
 
 It proves that mining does not need the node's built-in generatetoaddress: any program that uses the standard
 getblocktemplate interface can produce valid blocks on this chain, including the coinbase that must pay a witness v2
-ML-DSA output (the value rule). Standard library only; SHA-256d proof of work, so it is slow (about a megahash per
+ML-DSA output (the value rule). Standard library only for SHA-256d proof of work, so it is slow (about a megahash per
 process) but enough for the minimal difficulty of qtctest.
+
+RandomX: when the template says "powalgo": "randomx" (heights from Consensus::Params::RandomXHeight, from genesis on
+regtest and qtctest) the 80-byte header is hashed with RandomX instead and the miner needs the native scanner
+qtc-randomx-scan (cmake --build <dir> --target qtc-randomx-scan; it is looked for next to this script, in ./build/bin and
+in ../../build/bin, or give --randomx-scanner). --fast uses the 2 GiB dataset (about ten times the hash rate after a start-up
+of tens of seconds). The block hash and the layout of the header are unchanged; only the proof-of-work hash differs.
 
     qtc-gbt-miner.py --address tq1z... [--chain qtctest] [--datadir ~/.bitcoin] [--rpcurl http://127.0.0.1:28332]
                      [--rpcuser U --rpcpassword P] [--procs N] [--blocks N | --until-height H]
+                     [--randomx-scanner PATH] [--fast]
 
 The coinbase pays the whole subsidy plus fees to --address and carries the segwit witness commitment from the template.
 """
@@ -159,7 +166,22 @@ def solve_native(h76, target, nproc):
     return nonce
 
 
-def solve(h76, target, nproc):
+RX_SCANNER = None   # path of the native qtc-randomx-scan helper (needed when the template says "randomx")
+RX_FAST = False
+
+
+def solve_randomx(h76, target, nproc):
+    """One qtc-randomx-scan process with nproc threads (it shares the RandomX cache or dataset between them)."""
+    if not RX_SCANNER:
+        sys.exit("the template needs RandomX proof of work: build qtc-randomx-scan and pass --randomx-scanner")
+    env = dict(os.environ, QTC_RX_THREADS=str(nproc), QTC_RX_FAST="1" if RX_FAST else "0")
+    out = subprocess.check_output([RX_SCANNER, h76.hex(), "%064x" % target, "0", "1"], env=env, text=True).strip()
+    return int(out) if out.isdigit() else None
+
+
+def solve(h76, target, nproc, algo="sha256d"):
+    if algo == "randomx":
+        return solve_randomx(h76, target, nproc)
     if SCANNER:
         return solve_native(h76, target, nproc)
     ctx = mp.get_context("fork")
@@ -189,7 +211,7 @@ def mine_one(rpc, spk, nproc, extranonce_counter):
         h76 = struct.pack("<I", t["version"]) + bytes.fromhex(t["previousblockhash"])[::-1] + root + struct.pack("<II", ntime, int(t["bits"], 16))
         target = int(t["target"], 16)
         s0 = time.time()
-        nonce = solve(h76, target, nproc)
+        nonce = solve(h76, target, nproc, t.get("powalgo", "sha256d"))
         if nonce is not None: break
         extranonce_counter += 1   # nonce space exhausted: roll the extranonce
     header = h76 + struct.pack("<I", nonce)
@@ -206,10 +228,18 @@ def main():
     ap.add_argument("--procs", type=int, default=os.cpu_count() or 1)
     g = ap.add_mutually_exclusive_group(); g.add_argument("--blocks", type=int); g.add_argument("--until-height", type=int)
     ap.add_argument("--scanner", help="path of the native qtc-nonce-scan helper (default: the one next to this script, if built)")
+    ap.add_argument("--randomx-scanner", help="path of the native qtc-randomx-scan helper (default: next to this script or in build/bin)")
+    ap.add_argument("--fast", action="store_true", help="RandomX: use the 2 GiB dataset (faster after a long start-up)")
     a = ap.parse_args()
-    global SCANNER
+    global SCANNER, RX_SCANNER, RX_FAST
     cand = a.scanner or os.path.join(os.path.dirname(os.path.abspath(__file__)), "qtc-nonce-scan")
     SCANNER = cand if os.access(cand, os.X_OK) else None
+    here = os.path.dirname(os.path.abspath(__file__))
+    for rx in [a.randomx_scanner, os.path.join(here, "qtc-randomx-scan"), os.path.join(os.getcwd(), "build", "bin", "qtc-randomx-scan"),
+               os.path.join(here, "..", "..", "build", "bin", "qtc-randomx-scan")]:
+        if rx and os.access(rx, os.X_OK):
+            RX_SCANNER = rx; break
+    RX_FAST = a.fast
     spk, ver, plen = spk_for(a.address)
     url = a.rpcurl or f"http://127.0.0.1:{DEFAULT_RPC_PORT[a.chain]}"
     if a.rpcuser:
@@ -218,7 +248,8 @@ def main():
         auth = open(os.path.join(a.datadir, DATADIR_SUBDIR[a.chain], ".cookie")).read().strip()
     rpc = Rpc(url, auth)
     print(f"qtc-gbt-miner: {a.chain}, paying witness v{ver} program of {plen} bytes, {a.procs} processes, "
-          f"{'native scanner ' + SCANNER if SCANNER else 'pure Python hashing'}", flush=True)
+          f"{'native scanner ' + SCANNER if SCANNER else 'pure Python hashing'}, "
+          f"RandomX scanner {RX_SCANNER or 'not found'}{' (fast mode)' if RX_FAST else ''}", flush=True)
     done, en = 0, int(time.time()) & 0xffffff
     while True:
         h = rpc.call("getblockcount")

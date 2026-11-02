@@ -33,7 +33,7 @@ the shell tests in `fork/test/` on the default build unless marked otherwise.
 | Encryption | `walletdescriptormldsackey` records, `wallet/scriptpubkeyman.cpp` | **Working.** AES-256-CBC under the wallet master key, IV = SHA256(pk), like secp256k1 descriptor keys; `encryptwallet` converts and erases plaintext records; locked wallets cannot sign v2 inputs. Test: `regtest_v2_encrypt.sh`. |
 | HD derivation | `walletdescriptormldsahd` record, `CWallet::DeriveMlDsaDestination` | **Working.** `master = HMAC-SHA512("Qcoin/MLDSAv2/master", root key)[0:32]`, `seed_i = HMAC-SHA512(master, "MLDSAv2/child" \|\| i)[0:32]`, deterministic keygen from the seed. Same wallet seed reproduces the same `tq1z`/`bcrt1z` addresses. Test: `regtest_v2_hd.sh`. |
 | PSBT | `psbt.cpp` | **Working.** Proprietary input field (identifier `qcoin`, subtype 0) carries `param_id \|\| pk`; the attestation goes in `final_scriptwitness`. `walletprocesspsbt` signs v2 inputs; non-key-holding wallets pass the PSBT through unchanged. Test: `regtest_v2_psbt.sh`. |
-| `qtctest` chain | `src/kernel/chainparams.cpp` (`CQtcTestParams`), `chainparamsbase.cpp` | **Live (single operator).** `-chain=qtctest`, P2P 28333, RPC 28332, HRP `tq`, genesis `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` at nBits 1e00ffff (about 3 s per block on one CPU, one block per `generatetoaddress` call with `maxtries` 2000000000), mldsav2 active from genesis. No seeds, checkpoints or assumevalid yet; peers use `addnode=`. Example config `fork/contrib/qtctest.conf`. Tests: `regtest_qtctest.sh`, `regtest_qtctest_twonode.sh`. |
+| `qtctest` chain | `src/kernel/chainparams.cpp` (`CQtcTestParams`), `chainparamsbase.cpp` | **Live (single operator).** `-chain=qtctest`, P2P 28333, RPC 28332, HRP `tq`, genesis `0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b` at nBits 2000ffff, **RandomX proof of work from genesis** (about 6 s per block on one CPU in light mode, one block per `generatetoaddress` call with `maxtries` 2000000000), mldsav2 active from genesis. No seeds, checkpoints or assumevalid yet; peers use `addnode=`. Example config `fork/contrib/qtctest.conf`. Tests: `regtest_qtctest.sh`, `regtest_qtctest_twonode.sh`, `regtest_randomx.sh`. |
 | Explorer | `fork/tools/qtc-explorer.py` | **Working.** Stdlib-only HTTP status page: chain summary, deployment state, recent blocks, block/tx/address pages, mempool. Test: `regtest_qtctest_explorer.sh`. |
 | Faucet | `fork/tools/qtc-faucet.py` | **Working.** `fund` (mines to the faucet wallet), `send`, `serve` (HTTP form, pays `tq1z...` addresses only by default, per-address cooldown and per-IP limit via `X-Forwarded-For`, state in `faucet-state.json`). Test: `regtest_qtctest_faucet.sh`. |
 | Genesis helper | `fork/tools/mine-genesis.py` | **Working.** Deterministic multi-process genesis miner; prints the C++ lines to paste. Test: `test_mine_genesis.sh`. |
@@ -177,6 +177,74 @@ script-verify flag `SCRIPT_VERIFY_MLDSA_V2`:
   extras: the ML-DSA-87 `param_id` 0x7f and the `qcoin-v2-selftest` binary.
   The default build contains the complete v2 path.
 
+## RandomX proof of work
+
+From `Consensus::Params::RandomXHeight` on, a block is proven with RandomX instead of double SHA-256. The
+80-byte header layout and the 32-bit nonce are unchanged, and so are the target comparison and the difficulty
+adjustment (`nBits`, retargeting, minimum-difficulty rules); only the hash function that is compared to the
+target changes. The block identifier (the hash used in `getblockhash`, `prevhash`, `txindex` and the P2P
+inventory) stays the double SHA-256 of the header, so everything that refers to blocks is unaffected and a
+block hash no longer shows how much work it carries; mining tools replace the SHA-256d proof-of-work hash by
+RandomX and keep computing the block id with SHA-256d.
+
+| Parameter | Value |
+|---|---|
+| Library | RandomX v1.2.1 (tevador/RandomX, commit `102f8acf`), BSD-3-Clause, vendored unmodified in `fork/src/crypto/randomx` (`VENDORED.txt`) |
+| RandomX configuration | upstream defaults (2 MiB scratchpad, 256 MiB Argon2 cache, 2 GiB dataset, 8 programs of 2048 iterations) |
+| Key (seed) | the 16 ASCII bytes `Qcoin-RandomX-v1`, **fixed for every chain: there is no key-block rotation** (`qcoin::pow::RANDOMX_KEY`) |
+| Input | the 80 serialized header bytes, nonce included |
+| Output to target | the 32-byte RandomX hash read as a little-endian 256-bit integer (the same convention as a SHA-256d block hash), compared to the `nBits` target |
+| Activation | buried deployment `randomx` (`Consensus::DEPLOYMENT_RANDOMX`, shown by `getdeploymentinfo`): height **0 on regtest and `qtctest`**, never (`INT_MAX`) on mainnet, testnet, testnet4 and signet, so the Bitcoin chains are unaffected. Regtest override: `-testactivationheight=randomx@<n>` |
+| Below the height | double SHA-256 (the block hash), as before |
+| At and above the height | RandomX is the only accepted proof of work; a header that meets the target only under SHA-256d is rejected with `high-hash` |
+| Genesis | exempt once the height is 0 (its hash is fixed by an assertion in the chain parameters) |
+| Verification | light mode: a 256 MiB cache built on first use (about a second), one virtual machine per thread, JIT and hardware AES when the CPU has them (the hash is identical either way). Chains that never reach RandomX allocate nothing |
+| Cost | about 20 ms per hash in light mode on one thread here (about 256 hashes per qtctest block, 118 s for 20 blocks). `AcceptBlockHeader` and the headers anti-DoS pre-check stop at the first invalid header, so an invalid header costs one hash. A RandomX proof is not recomputed when the block index is loaded or a block is read from disk (the SHA-256d check still is, below the height) |
+
+Where the check happens: `CheckBlockHeaderPoW` (`src/pow.cpp`) at `AcceptBlockHeader` with height `parent + 1`
+(the context-free `CheckBlock` check is skipped on chains where RandomX can activate), at the headers
+pre-check in `net_processing` (height known from the first header's parent; if the parent is unknown, a
+header is accepted if it satisfies any hash function possible on the chain), and in `generatetoaddress` /
+`generateblock` (`GenerateBlock`, light mode, single thread). `getblocktemplate` reports `"powalgo":
+"randomx"` or `"sha256d"` for the template's height.
+
+Known limits of this design, to settle before a public launch:
+- the key never rotates, so a full dataset can be built once and reused forever; Monero rotates the key
+  every 2048 blocks (with a 64-block lag) to bound that. A rotation rule needs a key-block lookup in the
+  chain context.
+- light-mode verification is the only mode in the node; a full-dataset verifier would speed up initial
+  block download at 2 GiB of memory.
+- the upstream unit and functional tests mine regtest blocks with SHA-256d and no longer work on regtest
+  (this project uses the shell regtests in `fork/test`).
+- the proof of a block is not re-checked when it is read back from disk or the index is loaded.
+
+### How to mine on qtctest
+
+Build the node and the scanner: `cmake --build build --target bitcoind bitcoin-cli qtc-randomx-scan`.
+
+1. The node's own CPU miner (one block per call, about 6 s each; light mode, one thread; measured 20 blocks in 118 s):
+   ```bash
+   bitcoind -chain=qtctest -daemon
+   bitcoin-cli -chain=qtctest createwallet miner
+   M=$(bitcoin-cli -chain=qtctest -rpcwallet=miner getnewmldsaaddress mine)
+   for i in $(seq 1 10); do bitcoin-cli -chain=qtctest generatetoaddress 1 "$M" 2000000000 >/dev/null; done
+   bitcoin-cli -chain=qtctest getblockchaininfo | grep -E '"(blocks|difficulty)"'
+   bitcoin-cli -chain=qtctest getdeploymentinfo | grep -A3 '"randomx"'   # buried, active, height 0
+   ```
+2. A multi-threaded external miner over `getblocktemplate` (`fork/tools/qtc-gbt-miner.py` uses
+   `qtc-randomx-scan` automatically when the template says `"powalgo": "randomx"`):
+   ```bash
+   python3 fork/tools/qtc-gbt-miner.py --address "$M" --chain qtctest --procs 8 --blocks 20
+   python3 fork/tools/qtc-gbt-miner.py --address "$M" --chain qtctest --procs 16 --fast --blocks 200   # 2 GiB dataset
+   ```
+   `qtc-randomx-scan HEADER76_HEX TARGET64_HEX START STRIDE [MAXCOUNT]` is the building block for other miners:
+   same arguments as `qtc-nonce-scan`, RandomX instead of SHA-256d (`QTC_RX_THREADS`, `QTC_RX_FAST=1`);
+   `qtc-randomx-scan --selftest` checks the RandomX known-answer vector.
+3. Regtest and the activation height: `fork/test/regtest_randomx.sh` mines under RandomX, checks a mined nonce
+   with the independent scanner, confirms an ML-DSA spend, and with `-testactivationheight=randomx@10` shows
+   SHA-256d blocks 1 to 9, RandomX from 10, the rejection of a SHA-256d-only header at height 10, and a
+   restart and `-reindex` across the transition.
+
 ## Dust and block weight policy
 
 A witness v2 key-path spend carries a 3735-byte attestation (3 header bytes, the 1312-byte ML-DSA-44
@@ -246,7 +314,7 @@ bitcoind -daemon
 bitcoin-cli -chain=qtctest getblockchaininfo          # "chain": "qtctest", height 0
 bitcoin-cli -chain=qtctest getnetworkinfo | grep -A1 '"localaddresses"'   # should list the public address
 
-# 3. produce the first blocks (one block per call; about 3 s each at 1e00ffff)
+# 3. produce the first blocks (RandomX; one block per call, about 6 s each at 2000ffff)
 bitcoin-cli -chain=qtctest createwallet faucet
 M=$(bitcoin-cli -chain=qtctest -rpcwallet=faucet getnewmldsaaddress mine)   # tq1z: only ML-DSA outputs may hold value
 for i in $(seq 1 110); do bitcoin-cli -chain=qtctest generatetoaddress 1 "$M" 2000000000 > /dev/null; done
@@ -267,7 +335,7 @@ bitcoin-cli -chain=qtctest -rpcwallet=w getnewmldsaaddress     # tq1z... to past
 
 If the second node stays at 0 connections: check the seed's firewall, that both
 nodes print the same genesis (`getblockhash 0` =
-`0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437`), and that
+`0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b`), and that
 neither data directory predates the current genesis.
 
 ### Explorer and faucet (on the seed)
@@ -356,11 +424,11 @@ A dedicated chain, `-chain=qtctest`, exists for the public testnet. Its paramete
 | Network magic | `d1 54 43 54` ("QTCT" with the high bit set) |
 | P2P / RPC ports | 28333 / 28332 |
 | Address HRP | `tq` (legacy segwit `tq1q...`, ML-DSA witness v2 `tq1z...`); base58 and xpub prefixes as testnet |
-| Genesis | time 1761782400 (2026-10-30 00:00 UTC), nonce 6739749, nBits 0x1e00ffff, coinbase text "Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis" |
-| Genesis hash | `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` |
+| Genesis | time 1761782400 (2026-10-30 00:00 UTC), nonce 551, nBits 0x2000ffff, coinbase text "Qcoin testnet 30/Oct/2026 ML-DSA witness v2 active from genesis" |
+| Genesis hash | `0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b` |
 | Genesis merkle root | `951bd97f5c87145947cf54618d588de8c47b88c329991c4e21502ef52046c4b6` |
 | Deployments | BIP34/65/66/CSV at height 1, segwit and **mldsav2 at height 0** (active from genesis); testdummy never |
-| Proof of work | `powLimit` 000000ffff… (nBits 0x1e00ffff, about 16.8 million hashes per block), retargeting on, testnet-style min-difficulty blocks allowed; `generatetoaddress` works if `maxtries` is raised; it is a 32-bit total budget for the call, so mine one block per call with `maxtries` 2000000000 (about 3 s per block on one core) |
+| Proof of work | **RandomX** from height 0 (see "RandomX proof of work"); `powLimit` 00ffff… (nBits 0x2000ffff, about 256 RandomX hashes per block), retargeting on, testnet-style min-difficulty blocks allowed; `generatetoaddress` works; `maxtries` is a 32-bit total budget for the call, so mine one block per call with 2000000000 (about 6 s per block on one core in light mode) |
 | Seeds / checkpoints / assumevalid | none yet |
 
 Bring-up:
@@ -380,10 +448,10 @@ Launch checklist (in order):
    (the default build has the whole v2 path; the option only adds the non-BIP
    ML-DSA-87 extras). Publish reproducible builds for Linux at least, with liboqs
    either statically linked or pinned (0.14.0) in the install instructions.
-   Commit 13d6b525 (legacy ECDSA-path routing) is reverted. On  the
+   Commit 13d6b525 (legacy ECDSA-path routing) is reverted. On `qtctest` the
    value rule makes Qcoin a separate coin (ECDSA outputs with value are invalid);
    the Bitcoin chains in the tree keep upstream rules.
-2. **Genesis and PoW.** The genesis above (`1e00ffff`) is the open-testnet
+2. **Genesis and PoW.** The genesis above (`2000ffff`, RandomX) is the open-testnet
    value. To change it again follow "Raising the proof-of-work difficulty" (a
    difficulty-1 candidate is already mined and listed) and wipe data
    directories. Set `nMinimumChainWork`/`defaultAssumeValid` once a
@@ -481,7 +549,7 @@ checks the refusal paths and the operator CLI.
 ## Raising the proof-of-work difficulty
 
 `qtctest` started with a regtest-strength target so blocks (and the genesis)
-could be produced instantly; it now runs at `1e00ffff` (see the table). Raising
+could be produced instantly; it now runs RandomX at `2000ffff` (see the table; the table below lists the SHA-256d candidates, whose hash counts are SHA-256d counts). Raising
 the target further means mining a new genesis, because the genesis block commits
 to `nBits`. `fork/tools/mine-genesis.py` does that and
 prints the exact lines to paste.
@@ -489,7 +557,7 @@ prints the exact lines to paste.
 ### How the numbers relate
 
 - `nBits` is the compact-encoded target in the genesis header; a header is
-  valid when `sha256d(header)` as a little-endian 256-bit number is below it.
+  valid when its proof-of-work hash (RandomX on `qtctest` and regtest, `sha256d(header)` on the Bitcoin chains) as a little-endian 256-bit number is below it.
   Expected work for one block is `2^256 / target` hashes.
 - `powLimit` is the easiest target the chain ever allows. Mining the genesis
   exactly at `powLimit` (the Bitcoin convention) keeps `nBits == powLimit` and
@@ -504,13 +572,12 @@ prints the exact lines to paste.
 | `nBits` | expected hashes per block | genesis (message and time as in `qtctest`) | notes |
 |---|---|---|---|
 | `207fffff` (original bring-up value) | ~2 | `3ad80dc81cd929844ede7ee0c9f7b1fd85227c644dab5ff232a7ca01a0d06d60` | nonce 0, time 1761782400; instant; anyone can re-mine it |
-| `1e00ffff` (**current**, 1/256 of Bitcoin difficulty 1) | ~16.8 million | `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` | nonce 6739749, time 1761782400, powLimit `000000ffff000000000000000000000000000000000000000000000000000000`; about 5 s per block on one modern CPU, a few seconds for the genesis with the helper |
+| `2000ffff` (**current**, RandomX) | ~256 RandomX hashes | `0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b` | nonce 551 (a valid SHA-256d nonce; the genesis block is exempt from the RandomX check), time 1761782400, powLimit `00ffff0000000000000000000000000000000000000000000000000000000000`; about 6 s per block on one CPU in light mode |
+| `1e00ffff` (previous SHA-256d value, 1/256 of Bitcoin difficulty 1) | ~16.8 million | `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437` | nonce 6739749, time 1761782400, powLimit `000000ffff000000000000000000000000000000000000000000000000000000`; about 5 s per block on one modern CPU, a few seconds for the genesis with the helper |
 | `1d00ffff` (Bitcoin difficulty 1, testnet-like) | ~4.3 billion | `0000000086f43233c3863a31d6fd58b66fc47d6a21be15015bbb3e6768a13815` | nonce 207307031, time 1761782400, powLimit `00000000ffff0000000000000000000000000000000000000000000000000000`; mined in 55.5 s at ~4,314,179 H/s |
 
-`1e00ffff` is the value now in `CQtcTestParams`: honest block production takes
-about a second of CPU, re-mining the genesis or grinding reorgs is no longer
-free, and `generatetoaddress` still works for bootstrapping when `maxtries` is
-raised; it is a 32-bit total budget for the whole call, so mine one block per
+`2000ffff` is the value now in `CQtcTestParams` (a RandomX hash costs thousands of
+times more CPU than SHA-256d, so the target is far easier than `1e00ffff` was). `generatetoaddress` works for bootstrapping; it is a 32-bit total budget for the whole call, so mine one block per
 call with 2000000000 (the regtests and the faucet do exactly that). Difficulty 1 behaves like Bitcoin testnet and effectively
 requires an external miner.
 
@@ -569,7 +636,7 @@ Done:
   finalise with a proprietary public-key field, watch-only tracking.
 - Tests: `qcoin-v2-selftest` and the `fork/test/regtest_v2_*.sh` scripts
   (spend, multi, encrypt, hd, psbt, activation).
-- Chain and tools: `qtctest` with its genesis and 1e00ffff target, example
+- Chain and tools: `qtctest` with its genesis and RandomX target (2000ffff), example
   config, two-node test, explorer, faucet, genesis helper, launch runbook
   ("Public launch").
 - Value rule: only ML-DSA outputs may carry value (see "Value rule"); the
@@ -591,7 +658,7 @@ new genesis or a soft fork of the testnet.
 | Real seed host | Open, procedure written ("Publishing a real seed node"). Needs a public host, `vSeeds` set in `CQtcTestParams`, placeholders in `fork/contrib/qtctest.conf` and the runbook replaced, `-dnsseed=0` added to the single-node tests. | Yes |
 | Script path | **In progress.** Consensus done: `OP_CHECKMLDSAVERIFY` (0xb3) under leaf version 0xc0, control block `leaf_version \|\| param_id \|\| pk_hash \|\| nodes`, BIP 341 leaf/branch hashing, BIP 342-style leaf sighash, OP_SUCCESSx and OP_CHECKSIG* invalid in leaves, exactly-once verification of attestation entries; a 1-of-1 leaf spend confirms on regtest and qtctest via `qcoin-v2-scriptpath`. Open: the wallet (`wpq(KEY,{TREE})` descriptor, signer, PSBT fields), policy limits for leaf stack items, and reconciling the control-block layout with the BIP text. | No for a key-path testnet; the consensus rules are in before launch, so a later wallet does not need a soft fork |
 | Checkpoints / assumevalid / `chainTxData` | Open. Set once the chain has a few thousand blocks; irrelevant at launch. | No |
-| Proof-of-work regime | Decided for now: 1e00ffff (about 3 s per block on one CPU). The 1d00ffff genesis is pre-mined ("Raising the proof-of-work difficulty") if the chain needs to be harder. | No (changing it later means a new genesis) |
+| Proof-of-work regime | Decided for now: RandomX ("RandomX proof of work"), nBits 2000ffff on `qtctest` (about 6 s per block on one CPU). Open: key rotation, a full-dataset verifier, and the real difficulty for a public chain. | No (changing it later means a new genesis) |
 | Dust and weight policy | Open. Dust threshold still assumes a 148-byte input; a v2 input is about 1 kvB. Worst-case per-block verification cost not benchmarked (BIP section 7). | No |
 | Dedicated destination / output type | Open. v2 addresses are `WitnessUnknown{2,Q}`; `getnewaddress`/`-addresstype` cannot produce them, `getnewmldsaaddress` does. | No |
 | Derivation spec | Open. Single-level HMAC scheme ("HD derivation") works and is deterministic, but is not a published path; `encryptwallet` rotates the root, so users must back up after encrypting. | No (document the backup rule for testers) |

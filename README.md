@@ -37,8 +37,8 @@ Current state (October 2026):
   bech32m version 2 (`bcrt1z…`, `tq1z…`).
 - **`qtctest` chain.** A dedicated test network (`-chain=qtctest`, P2P 28333,
   RPC 28332, genesis
-  `0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437`,
-  difficulty 1e00ffff, about 3 s per block on one CPU). Example configuration in
+  `0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b`,
+  RandomX proof of work, nBits 2000ffff, about 6 s per block on one CPU). Example configuration in
   [fork/contrib/qtctest.conf](fork/contrib/qtctest.conf); seed nodes are not
   published yet, so peers use `addnode=`.
 - **Explorer and faucet.** Dependency-free Python tools in

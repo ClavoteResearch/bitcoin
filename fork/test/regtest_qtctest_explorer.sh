@@ -16,7 +16,7 @@ for k in sys.argv[1].split("."):
     d = d[int(k)] if k.lstrip("-").isdigit() else d[k]
 print(d)' "$1"; }
 get() { python3 -I -c 'import sys,urllib.request; print(urllib.request.urlopen(sys.argv[1], timeout=30).read().decode())' "http://127.0.0.1:$WEB$1"; }
-# generatetoaddress maxtries is a 32-bit total budget for the call (~16.8M hashes per block expected at 1e00ffff),
+# generatetoaddress maxtries is a 32-bit total budget for the call (about 256 RandomX hashes per block expected at 2000ffff),
 # so mine one block per call with a 2e9 budget each.
 mine() { local n=$1 addr=$2 i; for ((i=0;i<n;i++)); do $CLI generatetoaddress 1 "$addr" 2000000000 >/dev/null; done; }
 has() { grep -c -- "$2" <<<"$1"; }
@@ -61,7 +61,7 @@ AP=$(get "/address/$A1")
 check "$(has "$AP" "witness v2 ML-DSA (key path)")" "1" "address page identifies a tq1z address"
 check "$(has "$AP" "Received (1)")$(has "$AP" "Spent (1)")$(has "$AP" "+7.00000000")$(has "$AP" "-7.00000000")" "1111" "address page: one receive, one spend, amounts"
 check "$(get "/api/address/$A1" | py 'import sys,json; d=json.load(sys.stdin); print(d["kind"], d["unspent_count"], len(d["received"]), len(d["spent"]), d["spent"][0]["witness"][:18])')" "witness v2 ML-DSA (key path) 0 1 1 ML-DSA attestation" "api/address JSON"
-check "$(get "/api/block/0" | jget hash)" "0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437" "api/block/0 returns the qtctest genesis"
+check "$(get "/api/block/0" | jget hash)" "0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b" "api/block/0 returns the qtctest genesis"
 MP=$(get /mempool); check "$(has "$MP" "Mempool (0)")" "1" "mempool page (empty)"
 $W sendtoaddress "$M" 1 >/dev/null
 MP=$(get /mempool); check "$(has "$MP" "Mempool (1)")" "1" "mempool page shows a pending tx"

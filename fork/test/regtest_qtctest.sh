@@ -1,19 +1,19 @@
 #!/bin/bash
 # Qcoin testnet chain ("qtctest") bring-up: starts, reports the mldsav2 deployment active from genesis, mines at the
-# real 1e00ffff difficulty (generatetoaddress with a large maxtries), issues tq1z addresses, accepts a witness v2
+# RandomX proof of work at nBits 2000ffff (about 256 hashes per block; generatetoaddress with a large maxtries), issues tq1z addresses, accepts a witness v2
 # ML-DSA spend, and confirms the value rule: ordinary (ECDSA) outputs cannot carry value. Works with the default build.
 # Usage: regtest_qtctest.sh [path/to/build/bin]
 set -u
 BIN="${1:-build/bin}"
 D=$(mktemp -d "${TMPDIR:-/tmp}/qcoin-qtct.XXXX")
 RPCPORT=29332
-GENESIS=0000007ab165a4d29ff101fc7faf2cd2dd20618f4960c1fd85e3dd3e4a823437
+GENESIS=0090e8f80f8d0caecfde17644580d7bd83ef14f243c2f5a26e0d54996c09f11b
 COINBASE=04ffff001d01043f51636f696e20746573746e65742033302f4f63742f32303236204d4c2d445341207769746e657373207632206163746976652066726f6d2067656e65736973
 fail=0
 say() { printf '%s\n' "$*"; }
 check() { if [ "$1" = "$2" ]; then say "[PASS] $3 ($1)"; else say "[FAIL] $3 (got '$1', want '$2')"; fail=1; fi; }
 py() { python3 -I -c "$@"; }
-# generatetoaddress maxtries is a 32-bit total budget for the call (~16.8M hashes per block expected at 1e00ffff),
+# generatetoaddress maxtries is a 32-bit total budget for the call (about 256 RandomX hashes per block expected at 2000ffff),
 # so mine one block per call with a 2e9 budget each.
 mine() { local n=$1 addr=$2 i; for ((i=0;i<n;i++)); do $CLI generatetoaddress 1 "$addr" 2000000000 >/dev/null; done; }
 jget() { py 'import sys,json; d=json.load(sys.stdin)
@@ -29,7 +29,7 @@ say "== chain identity =="
 check "$($CLI getblockchaininfo | jget chain)" "qtctest" "getblockchaininfo reports chain qtctest"
 check "$($CLI getblockhash 0)" "$GENESIS" "genesis hash"
 check "$($CLI getblock "$GENESIS" 2 | jget tx.0.vin.0.coinbase)" "$COINBASE" "genesis coinbase carries the Qcoin testnet message"
-check "$($CLI getblock "$GENESIS" | py 'import sys,json; d=json.load(sys.stdin); print(d["time"], d["nonce"], d["bits"])')" "1761782400 6739749 1e00ffff" "genesis time/nonce/bits"
+check "$($CLI getblock "$GENESIS" | py 'import sys,json; d=json.load(sys.stdin); print(d["time"], d["nonce"], d["bits"])')" "1761782400 551 2000ffff" "genesis time/nonce/bits"
 check "$(ls -d "$D/qtctest" 2>/dev/null | wc -l)" "1" "data directory is <datadir>/qtctest"
 check "$($CLI getdeploymentinfo | py 'import sys,json; d=json.load(sys.stdin)["deployments"]["mldsav2"]; print(d["type"], d["active"], d["height"])')" "buried True 0" "mldsav2 active from genesis"
 check "$($CLI getnetworkinfo | py 'import sys,json; d=json.load(sys.stdin); print(d["localservicesnames"][0] if d["localservicesnames"] else "-")' 2>/dev/null | grep -c . )" "1" "node is up"
@@ -40,7 +40,7 @@ W="$CLI -rpcwallet=w"
 M=$($W getnewmldsaaddress mine)
 check "${M:0:4}" "tq1z" "mining address is an ML-DSA witness v2 address with the tq HRP"
 mine 101 "$M"
-check "$($CLI getblockcount)" "101" "101 blocks mined at 1e00ffff (one call per block, maxtries 2e9)"
+check "$($CLI getblockcount)" "101" "101 RandomX blocks mined at 2000ffff (one call per block, maxtries 2e9)"
 A0=$($W getaddressesbylabel mldsa | py 'import sys,json; print(list(json.load(sys.stdin).keys())[0])')
 A1=$($W getnewmldsaaddress t1)
 check "${A0:0:4} ${A1:0:4}" "tq1z tq1z" "ML-DSA witness v2 addresses use tq1z"

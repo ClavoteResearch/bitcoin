@@ -8,6 +8,9 @@
 #include <arith_uint256.h>
 #include <chain.h>
 #include <primitives/block.h>
+#include <streams.h>
+#include <util/check.h>
+#include "../fork/src/crypto/randomx_pow.h" // Qcoin: RandomX proof of work
 #include <uint256.h>
 #include <util/check.h>
 
@@ -168,4 +171,29 @@ bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Par
         return false;
 
     return true;
+}
+
+uint256 GetBlockPoWHash(const CBlockHeader& header, const Consensus::Params& params, int height)
+{
+    if (height < params.RandomXHeight) return header.GetHash();
+    DataStream ss{};
+    ss << header; // the 80 header bytes, nonce included
+    Assert(ss.size() == 80);
+    unsigned char out[32];
+    qcoin::pow::RandomXHash(UCharCast(ss.data()), ss.size(), out);
+    return uint256(std::span<const unsigned char>(out, 32));
+}
+
+bool CheckBlockHeaderPoW(const CBlockHeader& header, std::optional<int> height, const Consensus::Params& params)
+{
+    if (height) {
+        if (*height >= params.RandomXHeight && *height == 0 && header.GetHash() == params.hashGenesisBlock) return true;
+        return CheckProofOfWork(GetBlockPoWHash(header, params, *height), header.nBits, params);
+    }
+    // Unknown height: heights >= 1 are possible. SHA-256d applies below RandomXHeight, RandomX from it.
+    const bool sha_possible = params.RandomXHeight > 1;
+    const bool randomx_possible = params.RandomXHeight < std::numeric_limits<int>::max();
+    if (sha_possible && CheckProofOfWork(header.GetHash(), header.nBits, params)) return true;
+    if (randomx_possible) return CheckProofOfWork(GetBlockPoWHash(header, params, std::max(params.RandomXHeight, 1)), header.nBits, params);
+    return false;
 }
