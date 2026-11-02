@@ -341,7 +341,7 @@ therefore costs 3903 WU (976 vB), and a typical one-input, two-output payment is
 |---|---|---|---|
 | Block weight limit | 4,000,000 WU | **8,000,000 WU** | `Consensus::Params::nMaxBlockWeight`, set in `kernel/chainparams.cpp`; checked in `CheckBlock` and `ContextualCheckBlock` |
 | Blocks of v2 spends | about 950 | about 1,900 (the test mines and connects a 4.53 MWU block of 1,101 transactions) | |
-| Dust threshold, v2 output | 294 sat (P2WPKH formula) | **3,054 sat** at 3,000 sat/kvB: (43-byte output + 41-byte input + 934 witness vB) x 3 sat/B | `GetDustThreshold`, `MLDSA_V2_SPEND_WITNESS_BYTES` in `policy/policy.h` |
+| Dust threshold, v2 output | 294 sat (P2WPKH formula) | **3,054 sat** at 3,000 sat/kvB: (43-byte output + 41-byte input + 934 witness vB) x 3 sat/B. **5,670 sat** in `QCOIN_WITNESS_V2_EXPERIMENTAL` builds, which also accept ML-DSA-87: (43 + 41 + 1,806 witness vB) x 3 sat/B | `GetDustThreshold`, `MLDSA_V2_MAX_SPEND_WITNESS_BYTES` in `policy/policy.h` |
 | Sigop cost of a v2 spend | n/a | **0, unchanged** | `CountWitnessSigOps` only counts witness v0 |
 | Max standard transaction | 400,000 WU | 400,000 WU (about 100 key-path inputs) | `MAX_STANDARD_TX_WEIGHT`, unchanged |
 | P2P message limit | 4,000,000 B | 8,000,000 B on every chain (a full block is up to 8,000,000 bytes) | `MAX_PROTOCOL_MESSAGE_LENGTH` |
@@ -358,7 +358,7 @@ Reasons for the numbers:
   and `-blockmaxweight` above the chain limit is refused.
 - **Dust.** An output is only worth relaying if spending it costs less than it holds. A v2 output needs
   about 976 vB to spend, roughly fourteen times a P2WPKH output, so the P2WPKH threshold (294 sat) would
-  let through outputs that cost more to spend than they hold. Outputs below 3,054 sat at the default dust
+  let through outputs that cost more to spend than they hold. Outputs below 3,054 sat (5,670 sat in an experimental build, see "Large ML-DSA inputs") at the default dust
   relay fee are non-standard (`dust`). This is relay policy, not consensus.
 - **Sigops.** Not changed, on purpose. Verifying one ML-DSA-44 signature takes about as long as one
   ECDSA verification (`fork/results/2026-11-01-qtctest-3node/bench/microbench.txt`), and every
@@ -374,6 +374,49 @@ assume 4 MWU blocks, so fee estimates on a Qcoin chain assume half the real capa
 The Qt GUI network style is not wired for `qtctest`. The block-weight test runs on regtest because
 `qtctest` needs real proof of work for every block; both chains get the same limit.
 Test: `fork/test/regtest_v2_policy.sh`.
+
+### Large ML-DSA inputs: measurement and the dust threshold
+
+Question: is an ML-DSA-87 input (about 7.2 kB of witness) cheaper than a legacy input relative to what it costs the network?
+Measured on regtest with `fork/test/regtest_v2_policy_large.sh` (experimental build, `-walletsigscheme=mldsa87`) and a
+verification microbenchmark (pinned portable liboqs 0.14.0, AMD Ryzen 7 5800H; ECDSA from `fork/results/2026-11-01-qtctest-3node/bench/microbench.txt`):
+
+| Spend (one input) | Transaction | Input alone | Minimum relay fee (100 sat/kvB) | Verify per input | Input vB per us of verification |
+|---|---|---|---|---|---|
+| P2WPKH, 1 in / 2 out (computed) | 141 vB | 68 vB | 15 sat | about 35 us (ECDSA) | 1.9 |
+| ML-DSA-44 key path, 1 in / 2 out | 1,073 vB | about 976 vB | 108 sat | about 97 us | 10 |
+| ML-DSA-87 key path, 1 in / 2 out | **1,944 vB** (7,776 WU) | about 1,848 vB | **195 sat** | about 260 us | 7.1 |
+| ML-DSA-87 script path, 1 leaf with 1 key, 1 in / 1 out | **1,919 vB** (7,676 WU) | about 1,870 vB | **192 sat** | about 260 us | 7.2 |
+
+Findings:
+
+- **Weight and fee.** A large ML-DSA input pays for its bytes like any other (witness bytes at 1 WU, fee per vB), and it pays
+  about four to five times more fee per microsecond of signature verification than a P2WPKH input. A block of 8 MWU holds about
+  1,030 ML-DSA-87 inputs (about 0.27 s of verification), about 2,050 ML-DSA-44 inputs (about 0.2 s), against about 14,700
+  P2WPKH inputs (about 0.5 s) in a 4 MWU block. So the weight discount and the minimum relay fee are **not changed**: raising
+  either would charge ML-DSA inputs more per unit of resource than legacy inputs, not less. The same holds for the script
+  path (one verification per attestation entry, at most four, each with its own 3.7 or 7.2 kB).
+- **Dust was under-priced.** The dust threshold assumed an ML-DSA-44 spend (3,054 sat), but an output does not say which
+  parameter set will spend it. In an experimental build an output of 3,100 sat or 5,600 sat was standard although spending it
+  with ML-DSA-87 costs 1,890 vB x 3 sat/B = 5,670 sat. Now `GetDustThreshold` assumes the largest spend the build accepts:
+  `MLDSA_V2_MAX_SPEND_WITNESS_BYTES` = 7,226 witness bytes (1 + 3 + 3 + 2,592 + 4,627) in `QCOIN_WITNESS_V2_EXPERIMENTAL`
+  builds, 3,739 otherwise.
+
+| | Before | After |
+|---|---|---|
+| v2 dust threshold, default build (ML-DSA-44 only) | 3,054 sat | 3,054 sat (unchanged) |
+| v2 dust threshold, experimental build (ML-DSA-87 accepted) | 3,054 sat | **5,670 sat** |
+| Weight discount, minimum relay fee, dust relay fee | 1 WU per witness byte, 100 and 3,000 sat/kvB | unchanged |
+
+This is relay policy only: no consensus rule changes and no block is affected. Nodes of an experimental build refuse
+outputs between 3,054 and 5,669 sat that default-build nodes still relay; a network that mixes both should run one kind.
+Script-path outputs have the same program shape and share the threshold (a leaf with two ML-DSA-44 keys costs about as much
+as one ML-DSA-87 key path spend). The portable (pinned) liboqs verifies about three times slower than the AVX2 build used in
+the older microbenchmark (97 us against 27 to 34 us for ML-DSA-44); the per-block figures above are for the portable build.
+
+Test: `fork/test/regtest_v2_policy_large.sh [bin]` measures both spends and checks that an output of 3,100 or 5,600 sat is
+rejected as `dust` and one of 5,700 sat is accepted (skips on builds without ML-DSA-87). `EXPERIMENTAL=1
+fork/test/regtest_v2_policy.sh [bin]` runs the general policy test with the same boundary.
 
 ## Coin selection with ML-DSA inputs
 
@@ -788,7 +831,7 @@ new genesis or a soft fork of the testnet.
 | Script path | **In progress.** Consensus done: `OP_CHECKMLDSAVERIFY` (0xb3) under leaf version 0xc0, control block `leaf_version \|\| param_id \|\| pk_hash \|\| nodes`, BIP 341 leaf/branch hashing, BIP 342-style leaf sighash, OP_SUCCESSx and OP_CHECKSIG* invalid in leaves, exactly-once verification of attestation entries; a 1-of-1 leaf spend confirms on regtest and qtctest via `qcoin-v2-scriptpath`. PSBT fields, aggregation and wallet signing are done (`regtest_v2_psbt_multisig.sh`). The `wpq(KEY,TREE)` descriptor is done (`regtest_v2_descriptor_scriptpath.sh`). Open: policy limits for leaf stack items, and reconciling the control-block layout with the BIP text. | No for a key-path testnet; the consensus rules are in before launch, so a later wallet does not need a soft fork |
 | Checkpoints / assumevalid / `chainTxData` | Open. Set once the chain has a few thousand blocks; irrelevant at launch. | No |
 | Proof-of-work regime | Decided for now: RandomX ("RandomX proof of work"), nBits 2000ffff on `qtctest` (about 6 s per block on one CPU). Open: the real difficulty for a public chain. | No (changing it later means a new genesis) |
-| Dust and weight policy | Open. Dust threshold still assumes a 148-byte input; a v2 input is about 1 kvB. Worst-case per-block verification cost not benchmarked (BIP section 7). | No |
+| Dust and weight policy | Done for relay policy: v2 dust threshold 3,054 sat (ML-DSA-44), 5,670 sat in experimental builds (ML-DSA-87); weight discount and min relay fee unchanged after measurement ("Large ML-DSA inputs"). Open: per-block worst-case verification time on the AVX2 and portable library builds, BIP section 7. | No |
 | Dedicated destination / output type | Open. v2 addresses are `WitnessUnknown{2,Q}`; `getnewaddress`/`-addresstype` cannot produce them, `getnewmldsaaddress` does. | No |
 | Derivation spec | Open. Single-level HMAC scheme ("HD derivation") works and is deterministic, but is not a published path; `encryptwallet` rotates the root, so users must back up after encrypting. | No (document the backup rule for testers) |
 | `DataFromTransaction` attestation extraction | Open, minor. Re-signing a partially signed raw transaction does not recover an existing v2 attestation; PSBT and wallet signing are unaffected. | No |

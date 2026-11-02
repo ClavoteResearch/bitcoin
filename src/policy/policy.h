@@ -69,6 +69,14 @@ inline constexpr unsigned int DUST_RELAY_TX_FEE{3000};
 /** Qcoin: witness bytes of a witness v2 ML-DSA-44 key-path spend: item count (1) + length varint (3) + attestation
  * (3 header bytes, 1312-byte public key, 2420-byte signature = 3735). Used for the dust threshold. */
 inline constexpr unsigned int MLDSA_V2_SPEND_WITNESS_BYTES{1 + 3 + 3 + 1312 + 2420};
+/** Qcoin: the same for the largest parameter set this build accepts: ML-DSA-87 (2592-byte public key, 4627-byte signature,
+ * 7226 witness bytes) in QCOIN_WITNESS_V2_EXPERIMENTAL builds, ML-DSA-44 otherwise. The dust threshold of a v2 output uses it:
+ * the output does not reveal which parameter set spends it. */
+#ifdef QCOIN_WITNESS_V2_EXPERIMENTAL
+inline constexpr unsigned int MLDSA_V2_MAX_SPEND_WITNESS_BYTES{1 + 3 + 3 + 2592 + 4627};
+#else
+inline constexpr unsigned int MLDSA_V2_MAX_SPEND_WITNESS_BYTES{MLDSA_V2_SPEND_WITNESS_BYTES};
+#endif
 /** Default for -minrelaytxfee, minimum relay fee for transactions */
 inline constexpr unsigned int DEFAULT_MIN_RELAY_TX_FEE{100};
 /** Maximum number of transactions per cluster (default) */

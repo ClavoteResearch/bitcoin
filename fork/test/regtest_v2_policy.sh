@@ -6,12 +6,15 @@
 #    (more than 4,000,000 WU, which the Bitcoin limit would refuse) is mined and connected, so neither the weight
 #    nor the sigop accounting caps ML-DSA spends below the new limit.
 # Works with the default build. Usage: regtest_v2_policy.sh [path/to/build/bin]
+#   EXPERIMENTAL=1 regtest_v2_policy.sh [bin]   for a QCOIN_WITNESS_V2_EXPERIMENTAL build, whose dust threshold assumes an ML-DSA-87
+#   spend (5,670 sat instead of 3,054; see regtest_v2_policy_large.sh)
 set -u
 BIN="${1:-build/bin}"
 D=$(mktemp -d "${TMPDIR:-/tmp}/qcoin-policy.XXXX")
 RPCPORT=29442
 NSPENDS=${NSPENDS:-1100}
 fail=0
+if [ "${EXPERIMENTAL:-0}" = 1 ]; then DUST_BAD=0.00005600; DUST_OK=0.00005700; else DUST_BAD=0.00003000; DUST_OK=0.00003100; fi
 say() { printf '%s\n' "$*"; }
 check() { if [ "$1" = "$2" ]; then say "[PASS] $3 ($1)"; else say "[FAIL] $3 (got '$1', want '$2')"; fail=1; fi; }
 py() { python3 -I -c "$@"; }
@@ -40,8 +43,8 @@ spend_to() { # amount_btc -> testmempoolaccept "allowed reason": spend one walle
     signed=$($W signrawtransactionwithwallet "$raw" | py 'import sys,json; d=json.load(sys.stdin); print(d["hex"] if d["complete"] else "")')
     $CLI testmempoolaccept "[\"$signed\"]" 0 | py 'import sys,json; d=json.load(sys.stdin)[0]; print(d["allowed"], d.get("reject-reason",""))'
 }
-check "$(spend_to 0.00003000)" "False dust" "a 3000 sat v2 output is dust"
-check "$(spend_to 0.00003100)" "True " "a 3100 sat v2 output is standard"
+check "$(spend_to $DUST_BAD)" "False dust" "a $DUST_BAD v2 output is dust"
+check "$(spend_to $DUST_OK)" "True " "a $DUST_OK v2 output is standard"
 check "$(spend_to 1.0)" "True " "a 1 BTC-unit v2 payment is standard"
 
 say "== a standard ML-DSA spend confirms =="
