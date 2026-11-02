@@ -46,6 +46,7 @@ struct RandomXStatus {
     size_t datasets_building{0}; //!< of those, keys whose dataset is still being built
     uint64_t hashes_light{0};    //!< hashes computed with a cache since start
     uint64_t hashes_full{0};     //!< hashes computed with a dataset since start
+    uint64_t estimated_memory_mib{0}; //!< 256 MiB per cached key plus 2048 MiB per allocated dataset (ready or building)
 };
 RandomXStatus GetRandomXStatus();
 

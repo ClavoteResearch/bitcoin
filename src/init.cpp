@@ -536,7 +536,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-minimumchainwork=<hex>", strprintf("Minimum work assumed to exist on a valid chain in hex (default: %s, testnet3: %s, testnet4: %s, signet: %s)", defaultChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnetChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnet4ChainParams->GetConsensus().nMinimumChainWork.GetHex(), signetChainParams->GetConsensus().nMinimumChainWork.GetHex()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
     argsman.AddArg("-par=<n>", strprintf("Set the number of script verification threads (0 = auto, up to %d, <0 = leave that many cores free, default: %d)",
         MAX_SCRIPTCHECK_THREADS, DEFAULT_SCRIPTCHECK_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-randomxfull", "Qcoin: verify and mine RandomX proof of work with the 2 GiB full dataset instead of the 256 MiB cache (about 4.5 GiB of memory with two epoch keys; the dataset of a new key is built in the background and the cache is used until it is ready; default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-randomxfull", "Qcoin: verify and mine RandomX proof of work with the 2 GiB full dataset instead of the 256 MiB cache (about 2.3 GiB per cached key: 4.6 GiB with two keys, 6.9 GiB with three (previous, current and the pre-built next epoch); the datasets are built in the background and the cache is used until a dataset is ready; default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-prevoutfetchthreads=<n>", strprintf("Set the number of threads used to prefetch block input prevouts from the chainstate database (0 disables, up to %d, default: %d). Negative values are rejected.", MAX_PREVOUTFETCH_THREADS, DEFAULT_PREVOUTFETCH_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-persistmempool", strprintf("Whether to save the mempool on shutdown and load on restart (default: %u)", DEFAULT_PERSIST_MEMPOOL), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pid=<file>", strprintf("Specify pid file. Relative paths will be prefixed by a net-specific datadir location. (default: %s)", BITCOIN_PID_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -1552,8 +1552,14 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         const bool randomx_full{args.GetBoolArg("-randomxfull", false)};
         qcoin::pow::SetRandomXFullMode(randomx_full);
         if (chainparams.GetConsensus().RandomXHeight < std::numeric_limits<int>::max()) {
-            LogInfo("RandomX: %s verification (%s)", randomx_full ? "full-dataset" : "light-mode",
-                    randomx_full ? "2 GiB dataset per key built in the background, about 4.5 GiB with two keys; the 256 MiB cache is used until a dataset is ready" : "256 MiB cache per key, two keys cached");
+            const int epoch{chainparams.GetConsensus().nRandomXKeyEpoch};
+            if (randomx_full) {
+                LogInfo("RandomX: full-dataset verification (a 2 GiB dataset plus a 256 MiB cache per key, built in the background; the cache is used until a dataset is ready). "
+                        "Peak memory by chain height: about 2.3 GiB with one key (below block %d), 4.6 GiB with two keys (from block %d), "
+                        "6.9 GiB with three keys (from block %d: previous, current and the pre-built next epoch)", epoch, epoch, 2 * epoch);
+            } else {
+                LogInfo("RandomX: light-mode verification (a 256 MiB cache per key, two keys cached: about 0.5 GiB of memory)");
+            }
         }
     }
 

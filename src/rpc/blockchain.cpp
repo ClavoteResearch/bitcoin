@@ -1423,6 +1423,7 @@ RPCMethod getblockchaininfo()
                     {RPCResult::Type::NUM, "keys_cached", "RandomX keys with a built cache (at most 2 in light mode: the current and the previous epoch; 3 in full mode: plus the next epoch, pre-built)"},
                     {RPCResult::Type::NUM, "datasets_ready", "keys whose full dataset is built and in use (full mode)"},
                     {RPCResult::Type::NUM, "datasets_building", "keys whose full dataset is still being built in the background (full mode)"},
+                    {RPCResult::Type::NUM, "estimated_memory_mib", "memory held by the cached RandomX keys: 256 MiB per cache plus 2048 MiB per dataset (ready or being built). The node's resident size is this plus its ordinary working set (measured: about 140 to 190 MiB more in the regtest)"},
                     {RPCResult::Type::NUM, "hashes_light", "RandomX hashes computed with a cache since the node started"},
                     {RPCResult::Type::NUM, "hashes_full", "RandomX hashes computed with a dataset since the node started"},
                 }},
@@ -1483,6 +1484,7 @@ RPCMethod getblockchaininfo()
         randomx.pushKV("keys_cached", rx.keys_cached);
         randomx.pushKV("datasets_ready", rx.datasets_ready);
         randomx.pushKV("datasets_building", rx.datasets_building);
+        randomx.pushKV("estimated_memory_mib", rx.estimated_memory_mib);
         randomx.pushKV("hashes_light", rx.hashes_light);
         randomx.pushKV("hashes_full", rx.hashes_full);
         obj.pushKV("randomx", std::move(randomx));

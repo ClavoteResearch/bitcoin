@@ -206,8 +206,10 @@ RandomXStatus GetRandomXStatus()
     st.hashes_full = g_hashes_full.load();
     std::lock_guard<std::mutex> lock(g_cache_mutex);
     st.keys_cached = g_caches.size();
+    st.estimated_memory_mib = 256 * g_caches.size();
     for (const auto& entry : g_caches) {
         if (!entry.second->dataset) continue;
+        st.estimated_memory_mib += 2048;
         if (entry.second->dataset_ready.load()) ++st.datasets_ready;
         else ++st.datasets_building;
     }

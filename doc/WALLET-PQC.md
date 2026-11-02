@@ -270,10 +270,18 @@ verification runs ahead of the tip and may need a key before it is prepared, in 
 the dataset is ready. Light mode never pre-builds and keeps two keys.
 If the dataset cannot be allocated the key simply stays in light mode.
 
-Checking the mode: the log prints `RandomX: full-dataset verification (...)` or `RandomX: light-mode verification (...)`
-at start-up, and `getblockchaininfo` has a `randomx` object: `mode` (`light` or `full`), `active` (whether the next block
-is proven with RandomX), `keys_cached` (at most 2 in light mode, 3 in full mode), `datasets_ready` and `datasets_building` (full mode), and the
-counters `hashes_light` / `hashes_full` (hashes computed with a cache / a dataset since the node started).
+Checking the mode and the memory: the log prints one line at start-up. Light: `RandomX: light-mode verification (a 256
+MiB cache per key, two keys cached: about 0.5 GiB of memory)`. Full: `RandomX: full-dataset verification (...)` with the peak
+by chain height: about 2.3 GiB with one key (below block 2048), 4.6 GiB with two keys (from block 2048, when the next key
+is pre-built) and 6.9 GiB with three keys (from block 4096). These are peak resident sizes as measured by
+`regtest_randomx_full.sh` (2,304 MiB per key of cache and dataset, plus the node's working set of about 140 to 190 MiB;
+measured 4,750 MiB with two datasets and 7,100 MiB with three). `getblockchaininfo` has a `randomx` object: `mode`
+(`light` or `full`), `active` (whether the next block is proven with RandomX), `keys_cached` (at most 2 in light mode, 3 in
+full mode), `datasets_ready` and `datasets_building` (full mode), `estimated_memory_mib` (256 MiB per cached key plus 2,048
+MiB per allocated dataset, ready or building: 512 in light mode, 2,304 / 4,608 / 6,912 in full mode with one / two / three
+keys; add the working set for the resident size) and the counters `hashes_light` / `hashes_full` (hashes computed with a
+cache / a dataset since the node started). An earlier log line and help text said "about 4.5 GiB with two keys"; that was
+true only for two keys and is corrected.
 
 Mining tools: `generatetoaddress` and `generateblock` use the node's mode (the node hashes with the dataset once it is
 ready). `qtc-randomx-scan` has its own switch, `QTC_RX_FULL=1` (or `QTC_RX_FAST=1`; the dataset is built for the key in
@@ -366,6 +374,50 @@ assume 4 MWU blocks, so fee estimates on a Qcoin chain assume half the real capa
 The Qt GUI network style is not wired for `qtctest`. The block-weight test runs on regtest because
 `qtctest` needs real proof of work for every block; both chains get the same limit.
 Test: `fork/test/regtest_v2_policy.sh`.
+
+## Coin selection with ML-DSA inputs
+
+Observation from the two-node RandomX test (regtest, 2,400 blocks mined to one wallet): a `sendtoaddress` of 1.0 produced
+a 40,060 vB transaction, 41 inputs and no change, where the same payment normally takes one input and 1,073 vB. It is
+not a bug in the wallet or in the ML-DSA input size; it is upstream's coin selection doing what it is designed to do, made
+expensive by the size of an ML-DSA input (about 976 vB, fourteen times a P2WPKH input). Reproduced locally with the same
+numbers (41 inputs, 40,060 vB, fee 0.00403 BTC at 10 sat/vB):
+
+- **Many small coins.** The regtest halving interval is 150 blocks, so of the 2,300 mature coinbase outputs only 299 are
+  25 coins or more, 600 are 1 to 25, 1,050 are 0.01 to 1 and 351 are below 0.01 (median 0.39).
+- **Consolidation.** The wallet's `-consolidatefeerate` (default 10 sat/vB, `DEFAULT_CONSOLIDATE_FEERATE`) is "the maximum
+  feerate at which transaction building may use more inputs than strictly necessary so that the wallet's UTXO pool can be
+  reduced". The regtest fallback fee is exactly 10 sat/vB, so the wallet treats every send as a chance to consolidate and,
+  by its waste metric, prefers a changeless selection of many coins to one coin plus change. The selection log
+  (`-debug=selectcoins`) shows the Knapsack "best subset" of small coins winning.
+- **Confirmation.** With `-consolidatefeerate=0.00001` (1 sat/vB) the same wallet and chain send with 1 input, 2 outputs,
+  1,073 vB (also with a 20 sat/vB fallback fee). The fee paid was the real size times the rate in every case, so the size
+  estimate for v2 inputs is right.
+
+Consequences: on a real chain at a feerate above `-consolidatefeerate` the wallet behaves normally. At or below 10 sat/vB
+(regtest, qtctest, quiet periods) it can spend dozens of ML-DSA inputs in one payment, each costing about 10,000 sat at
+10 sat/vB, and transactions beyond about 100 inputs (`MAX_STANDARD_TX_WEIGHT`) are not relayed. The default is tuned for
+68 vB inputs, so for Qcoin it should be set lower (roughly 1 sat/vB, or scaled with the 14x input size) before a public
+launch; nothing was changed here, because this is not a defect. Users can lower it today with `-consolidatefeerate`.
+
+## Running multi-node tests on rented instances
+
+Notes from the Vast.ai two-node RandomX test, for the next one:
+
+- **The "qcoin-qtctest-p2p" template builds the repository itself.** Its start-up script runs `apt-get install`, installs
+  liboqs from apt or from source (not necessarily 0.14.0), clones the whole `experimental-pqc` history to `/root/qcoin` and builds with `-j$(nproc)`.
+  `nproc` shows the host's cores (80 on one machine) although the container has 10, so the build is slow and can run out
+  of memory, its liboqs may differ from the 0.14.0 the fork is built against, and it competes with your own build (a
+  script that waits for it to finish waited five minutes and more). Kill its top-level shell and its clone before
+  starting your own build: `pkill -f "[e]xec > /root/setup.log"; pkill -f "[g]it clone -b experimental-pqc"` (the
+  square brackets keep `pkill` from matching the ssh command that runs it). A build of `bitcoind` and `bitcoin-cli`
+  from a `--depth 1` clone with liboqs 0.14.0 then takes about 2 minutes on 10 cores and 2 minutes on 18.
+- **Ports.** Only the ports in the template are reachable from outside (28333 is mapped; read the external port from
+  `/proc/1/environ`, `VAST_TCP_PORT_28333`). A node with `-listen=1` also binds its P2P port + 1 for onion inbound, so
+  keep other services (the RPC port of a second node on the same host) off it.
+- **Cost.** Read the price breakdown (hover the price) before renting: the internet rate varies by host (from $1.33/TB to
+  $4/TB here, against $40/TB on the host that overcharged earlier). Two instances for 25 minutes cost $0.06.
+- **Clean up.** Stop the nodes, copy the logs, then destroy the instances; check the billing page afterwards.
 
 ## Public launch
 

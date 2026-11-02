@@ -33,10 +33,19 @@ keyof() { py 'import sys; print(bytes.fromhex(sys.argv[1])[::-1].hex())' "$1"; }
 waitfor() { # field value timeout-seconds
     for i in $(seq 1 "$3"); do [ "$(rx "$1")" = "$2" ] && return 0; sleep 1; done; return 1; }
 peak_kb() { awk '/VmHWM/ {print $2}' "/proc/$(cat "$D/regtest/bitcoind.pid")/status"; }
+# getblockchaininfo.randomx.estimated_memory_mib (256 MiB per cache + 2048 MiB per dataset) must match the measured peak
+# resident size: at least the estimate, and at most the estimate plus the node's ordinary working set (under 800 MiB here)
+memcheck() { # label
+    local est hwm
+    est=$(rx estimated_memory_mib); hwm=$(( $(peak_kb) / 1024 ))
+    check "$([ "$hwm" -ge "$est" ] && [ "$hwm" -le $((est + 800)) ] && echo yes)" "yes" "$1: estimated_memory_mib $est, measured peak resident $hwm MiB"
+}
 
 say "== 1. mode reporting =="
 start -randomxfull=1
 check "$(grep -c 'RandomX: full-dataset verification' "$D/regtest/debug.log")" "1" "log line reports full-dataset verification"
+check "$(grep -c 'about 2.3 GiB with one key (below block 2048), 4.6 GiB with two keys (from block 2048), 6.9 GiB with three keys (from block 4096' "$D/regtest/debug.log")" "1" "log line gives the peak memory for one, two and three keys"
+check "$(grep -c '4.5 GiB' "$D/regtest/debug.log")" "0" "the old 4.5 GiB figure is gone"
 check "$(rx mode)" "full" "getblockchaininfo.randomx.mode is full"
 check "$(rx active)" "True" "RandomX is active for the next block"
 $CLI createwallet w >/dev/null
@@ -47,6 +56,7 @@ say "== 2. genesis key: dataset built in the background, then used =="
 $CLI generatetoaddress 100 "$M" >/dev/null
 check "$($CLI getblockcount)" "100" "100 blocks mined while the dataset builds (cache fallback)"
 waitfor datasets_ready 1 300; check "$(rx datasets_ready)" "1" "genesis key dataset is built and in use"
+memcheck "one key"
 H0=$(rx hashes_full)
 $CLI generatetoaddress 1947 "$M" >/dev/null
 check "$($CLI getblockcount)" "2047" "2047 blocks mined"
@@ -59,6 +69,7 @@ check "$($CLI getblockcount)" "2048" "block 2048 (the key block of the next epoc
 K2=$(keyof "$($CLI getblockhash 2048)")
 waitfor datasets_ready 2 300
 check "$(rx keys_cached) $(rx datasets_ready)" "2 2" "the next key's cache and dataset are built at height 2048, 65 blocks before it is first used"
+memcheck "two keys"
 $CLI generatetoaddress 64 "$M" >/dev/null
 check "$($CLI getblockcount)" "2112" "64 more blocks mined, still on the genesis key"
 check "$(rx datasets_building)" "0" "no dataset is still being built when the boundary is reached"
@@ -88,6 +99,7 @@ waitfor datasets_ready 3 300
 check "$(rx keys_cached) $(rx datasets_ready)" "3 3" "three keys are cached with three built datasets (previous, current, next)"
 PEAK=$(peak_kb)
 check "$([ "$PEAK" -gt 6000000 ] && [ "$PEAK" -lt 9500000 ] && echo yes)" "yes" "peak resident memory with three datasets is about 6.9 GiB (VmHWM $((PEAK / 1024)) MiB)"
+memcheck "three keys"
 TIP=$($CLI getbestblockhash)
 
 say "== 5. the same chain in light mode =="
@@ -98,7 +110,8 @@ check "$($CLI getbestblockhash)" "$TIP" "a light-mode node re-validates all 4096
 check "$(rx mode)" "light" "getblockchaininfo.randomx.mode is light"
 check "$(rx datasets_ready) $(rx datasets_building)" "0 0" "no dataset in light mode, and no key is prepared ahead"
 check "$([ "$(rx keys_cached)" -le 2 ] && echo yes)" "yes" "light mode caches at most two keys ($(rx keys_cached))"
-check "$(grep -c 'RandomX: light-mode verification' "$D/regtest/debug.log")" "1" "log line reports light-mode verification"
+check "$(grep -c 'RandomX: light-mode verification (a 256 MiB cache per key, two keys cached: about 0.5 GiB of memory)' "$D/regtest/debug.log")" "1" "log line reports light-mode verification and about 0.5 GiB"
+check "$(rx estimated_memory_mib)" "512" "light mode holds two 256 MiB caches (estimated_memory_mib)"
 
 [ $fail -eq 0 ] && say "RANDOMX FULL REGTEST OK" || say "RANDOMX FULL REGTEST FAILED"
 exit $fail
